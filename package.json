@@ -1,0 +1,16 @@
+{
+  "name": "x-export",
+  "version": "1.0.0",
+  "description": "Userscript to export X likes and bookmarks",
+  "scripts": {
+    "test": "node --test test/parse.test.cjs"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "playwright": "^1.65.0",
+    "puppeteer-core": "^25.18.1"
+  },
+  "private": true
+}
