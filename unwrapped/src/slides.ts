@@ -1,5 +1,6 @@
+import { STRINGS, type Noun, type Strings } from './i18n';
 import type { Pose } from './ribbon';
-import { PERSONAS, PLATFORMS, TRAITS, type Account, type Summary } from './stats';
+import { PLATFORMS, type Account, type Summary } from './stats';
 
 export interface Slide {
   id: string;
@@ -9,32 +10,19 @@ export interface Slide {
   hold?: boolean;
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 export function esc(v: unknown) {
   return String(v).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
-export const fmt = (n: number) => Number(n).toLocaleString('en-US');
+export const fmt = (n: number) => STRINGS.en.fmt(n);
 
-export function compact(n: number) {
-  return Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n);
-}
-
-// Animated number; the player counts it up from 0 when the slide opens.
-const count = (n: number) => `<span data-count="${Number(n)}">${fmt(n)}</span>`;
-
-export function hourLabel(h: number) {
-  const hh = h % 12 || 12;
-  return `${hh}${h < 12 ? 'am' : 'pm'}`;
-}
-
-export function feedMood(h: number) {
-  if (h >= 5 && h < 11) return ['☀', 'Early Bird'];
-  if (h >= 11 && h < 16) return ['◐', 'Lunch Break'];
-  if (h >= 16 && h < 20) return ['◒', 'Golden Hour'];
-  if (h >= 20) return ['☾', 'Night Owl'];
-  return ['✦', 'After Hours'];
+// Index into Strings.moods, with its icon.
+export function feedMood(h: number): [string, number] {
+  if (h >= 5 && h < 11) return ['☀', 0];
+  if (h >= 11 && h < 16) return ['◐', 1];
+  if (h >= 16 && h < 20) return ['◒', 2];
+  if (h >= 20) return ['☾', 3];
+  return ['✦', 4];
 }
 
 // Stable gradient orb per handle, shown under the profile picture and in its place when there is none.
@@ -58,9 +46,6 @@ export function gradientAt(x: number) {
 
 export const yearOf = (s: Summary) => s.to.slice(0, 4);
 
-function monthName(key: string) {
-  return MONTHS[Number(key.slice(5, 7)) - 1];
-}
 
 export function avatar(handle: string, url: string | null, cls = '') {
   const img = url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : '';
@@ -70,29 +55,36 @@ export function avatar(handle: string, url: string | null, cls = '') {
 // Shrinks long handles to one line across the frame (the large title is 12.6cqw).
 const fitHandle = (h: string) => Math.min(12.6, 86 / (0.58 * (h.length + 1))).toFixed(2);
 
-const plural = (n: number, one: string, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
-
 // Entrance animation hook; an attribute, not a class, so it can sit next to an element's own class.
 const anim = (i: number) => `data-in style="--d:${(0.15 + i * 0.12).toFixed(2)}s"`;
 
 export function buildSlides(s: Summary, shareCard: string): Slide[] {
+  const T = STRINGS[s.l];
+  const fmt = T.fmt;
+  // Animated number; the player counts it up from 0 when the slide opens.
+  const count = (n: number) => `<span data-count="${Number(n)}">${fmt(n)}</span>`;
+  const plural = (n: number, noun: Noun) => T.plural(n, noun, count);
+  // A count tile: the number on top, the noun in its matching form below.
+  const tile = (i: number, n: number, noun: Noun) =>
+    `<div class="glass tile" ${anim(i)}><b>${count(n)}</b><span>${T.plural(n, noun, () => '').trim()}</span></div>`;
   const year = yearOf(s);
   const [first, ...rest] = s.top;
-  const [moodIcon, mood] = feedMood(s.peakHour);
+  const [moodIcon, moodIndex] = feedMood(s.peakHour);
+  const mood = T.moods[moodIndex];
   const mine = s.clockOf === 'you';
-  const persona = PERSONAS[s.persona.id];
+  const persona = T.persona[s.persona.id];
   const site = PLATFORMS[s.p];
-  const Saves = site.saves[0].toUpperCase() + site.saves.slice(1);
+  const saveNoun = site.save as Noun;
 
   const intro: Slide = {
     id: 'intro',
     pose: [0.1, -0.06, 0.85, 1.15],
     html: `
-      <h1 class="display xl" ${anim(0)}>Your ${site.name}<br>Unwrapped<br>${esc(year)}</h1>
+      <h1 class="display xl" ${anim(0)}>${T.intro.title(site.name, esc(year))}</h1>
       <div class="spacer"></div>
-      <div class="glass stat-line" ${anim(3)}>12 months. ${[
+      <div class="glass stat-line" ${anim(3)}>${T.intro.months} ${[
         s.likes && plural(s.likes, 'like'),
-        s.bookmarks && plural(s.bookmarks, site.save),
+        s.bookmarks && plural(s.bookmarks, saveNoun),
         s.posts?.count && plural(s.posts.count, 'post'),
         !s.posts?.count && s.accounts && plural(s.accounts, 'account'),
       ].filter(Boolean).join('. ')}.</div>
@@ -103,7 +95,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'top',
     pose: [0.2, 0.18, 0.55, 1.0],
     html: `
-      <h2 class="display l" ${anim(0)}>Your top 5<br>accounts.</h2>
+      <h2 class="display l" ${anim(0)}>${T.top.title}</h2>
       ${first ? `
       <div class="glass hero-account" ${anim(1)}>
         ${avatar(first.h, first.a, 'big')}
@@ -111,7 +103,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
           <p class="rank">#1 @${esc(first.h)}</p>
           <p class="name">${esc(first.n)}</p>
           <p class="mega">${count(score(first))}</p>
-          <p class="sub">${breakdown(first)}</p>
+          <p class="sub">${breakdown(T, first)}</p>
         </div>
       </div>` : ''}
       <ol class="accounts">
@@ -122,7 +114,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
           <span class="num">${fmt(score(a))}</span>
         </li>`).join('')}
       </ol>
-      <p class="foot" ${anim(7)}>Ranked by your likes, ${site.saves} and replies across ${fmt(s.accounts)} accounts.</p>`,
+      <p class="foot" ${anim(7)}>${T.top.foot(site.saves, fmt(s.accounts))}</p>`,
   };
 
   const cells = [...s.clock].map((v, i) => {
@@ -133,15 +125,15 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'clock',
     pose: [0.15, 0.08, 0.6, 1.05],
     html: `
-      <h2 class="display l" ${anim(0)}>${mine ? `You live<br>on ${site.name} at` : 'The posts you<br>love drop at'}<br><span class="grad">${hourLabel(s.peakHour)}</span></h2>
+      <h2 class="display l" ${anim(0)}>${mine ? T.clock.mine(site.name) : T.clock.feed}<br><span class="grad">${T.hour(s.peakHour)}</span></h2>
       <div class="spacer"></div>
       <div class="glass heatmap" ${anim(2)}>
-        <div class="days">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div>
+        <div class="days">${T.days.map((d) => `<span>${d}</span>`).join('')}</div>
         <div class="grid">${cells.join('')}</div>
         <div class="hours"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
       </div>
-      <div class="pill" ${anim(4)}><span class="pill-icon">${moodIcon}</span>${mine ? '' : 'Your feed: '}${mood}</div>
-      <p class="foot" ${anim(5)}>${mine ? 'When you posted and replied.' : 'When the posts you liked and saved went live.'}</p>`,
+      <div class="pill" ${anim(4)}><span class="pill-icon">${moodIcon}</span>${mine ? '' : T.clock.yourFeed}${mood}</div>
+      <p class="foot" ${anim(5)}>${mine ? T.clock.footMine : T.clock.footFeed}</p>`,
   };
 
   const maxP = Math.max(1, ...s.topics.map((t) => t.p));
@@ -150,14 +142,14 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'topics',
     pose: [-0.25, -0.35, 0.3, 0.9],
     html: `
-      <h2 class="display l" ${anim(0)}>Your year<br>in topics.</h2>
+      <h2 class="display l" ${anim(0)}>${T.topics.title}</h2>
       <div class="bubbles">
         ${s.topics.map((t, i) => `
         <div class="bubble b${i}" style="--size:${(14 + 30 * Math.sqrt(t.p / maxP)).toFixed(1)}cqw;left:${SLOTS[i][0]}%;top:${SLOTS[i][1]}%;--d:${(0.3 + i * 0.15).toFixed(2)}s">
-          <span class="t">${esc(t.k)}</span><span class="p">${Number(t.p)}%</span>
+          <span class="t" style="--len:${T.topic(t.k).length}">${esc(T.topic(t.k))}</span><span class="p">${Number(t.p)}%</span>
         </div>`).join('')}
       </div>
-      <p class="foot" ${anim(6)}>Share of topic mentions across everything you ${s.posts ? 'liked, saved and posted' : 'liked and saved'}.</p>`,
+      <p class="foot" ${anim(6)}>${T.topics.foot(!!s.posts)}</p>`,
   };
 
   const v = s.vault;
@@ -165,13 +157,13 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'vault',
     pose: [-0.1, 0.3, -0.4, 1.0],
     html: `
-      <h2 class="display l" ${anim(0)}>The Vault.</h2>
-      <p class="lede" ${anim(1)}>${count(s.bookmarks)} posts saved for later.</p>
+      <h2 class="display l" ${anim(0)}>${T.vault.title}</h2>
+      <p class="lede" ${anim(1)}>${T.vault.lede(count(s.bookmarks))}</p>
       <div class="stack">
-        <div class="glass card c0"><span class="big">${100 - v.onlySaved}%</span>of your saves got a like first.</div>
-        <div class="glass card c1"><span class="big">${v.video}%</span>of the vault is video.</div>
-        ${s.taste ? `<div class="glass card c2"><span class="big">${fmt(v.gems)}</span>hidden gems with under 1K likes.</div>` : ''}
-        ${v.oldest ? `<div class="glass card c3"><span class="big">${esc(v.oldest.y)}</span>Oldest save: a post by @${esc(v.oldest.h)}.</div>` : ''}
+        <div class="glass card c0"><span class="big">${100 - v.onlySaved}%</span>${T.vault.likedFirst}</div>
+        <div class="glass card c1"><span class="big">${v.video}%</span>${T.vault.video}</div>
+        ${s.taste ? `<div class="glass card c2"><span class="big">${fmt(v.gems)}</span>${T.vault.gems}</div>` : ''}
+        ${v.oldest ? `<div class="glass card c3"><span class="big">${esc(v.oldest.y)}</span>${T.vault.oldest(esc(v.oldest.h))}</div>` : ''}
       </div>`,
   };
 
@@ -180,39 +172,39 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'taste',
     pose: [0.3, -0.25, 1.1, 1.1],
     html: `
-      <h2 class="display l" ${anim(0)}>Mainstream or<br>underground?</h2>
+      <h2 class="display l" ${anim(0)}>${T.taste.title}</h2>
       <div class="glass meter-card" ${anim(1)}>
         <p class="mega">${count(t.median)}</p>
-        <p class="sub">likes on a typical post you loved</p>
+        <p class="sub">${T.taste.typical}</p>
         <div class="meter"><div class="track"></div><div class="dot" style="--x:${100 - Math.min(100, t.niche * 2)}%"></div></div>
-        <div class="meter-labels"><span>Underground</span><span>Mainstream</span></div>
+        <div class="meter-labels"><span>${T.taste.underground}</span><span>${T.taste.mainstream}</span></div>
       </div>
       <div class="glass mix" ${anim(2)}>
         <div class="mixbar"><i style="--w:${s.media.video}%"></i><i style="--w:${s.media.photo}%"></i><i style="--w:${s.media.text}%"></i></div>
-        <div class="mixlegend"><span>Video ${s.media.video}%</span><span>Photo ${s.media.photo}%</span><span>Text ${s.media.text}%</span></div>
+        <div class="mixlegend"><span>${T.taste.video} ${s.media.video}%</span><span>${T.taste.photo} ${s.media.photo}%</span><span>${T.taste.text} ${s.media.text}%</span></div>
       </div>
-      <p class="facts" ${anim(3)}>${t.niche}% had under 1K likes. ${t.biggest ? `Biggest: a @${esc(t.biggest.h)} post with ${compact(t.biggest.views)} views.` : ''} Posts in ${plural(s.langs, 'language')}.</p>`,
+      <p class="facts" ${anim(3)}>${T.taste.niche(t.niche)} ${t.biggest ? T.taste.biggest(esc(t.biggest.h), T.compact(t.biggest.views)) : ''} ${T.taste.langs(s.langs)}</p>`,
   };
 
   const wave: Slide = {
     id: 'wave',
     pose: [0.05, -0.38, 0.12, 0.95],
     html: `
-      <h2 class="display l" ${anim(0)}>Your year<br>in a wave.</h2>
-      ${waveChart(s)}
-      <div class="legend" ${anim(4)}><span class="k likes">Likes</span><span class="k saves">${Saves}</span>${s.posts ? '<span class="k posts">Posts</span>' : ''}</div>
-      <p class="foot" ${anim(5)}>${site.name} does not show when you liked a post, so each like is dated by its place in your list.</p>`,
+      <h2 class="display l" ${anim(0)}>${T.wave.title}</h2>
+      ${waveChart(T, s)}
+      <div class="legend" ${anim(4)}><span class="k likes">${T.wave.likes}</span><span class="k saves">${T.wave.saves(site.name)}</span>${s.posts ? `<span class="k posts">${T.wave.posts}</span>` : ''}</div>
+      <p class="foot" ${anim(5)}>${T.wave.foot(site.name)}</p>`,
   };
 
   const personaSlide: Slide = {
     id: 'persona',
     pose: [0.05, 0.12, 2.2, 0.75],
     html: `
-      <p class="kicker" ${anim(0)}>Your ${site.name} personality</p>
+      <p class="kicker" ${anim(0)}>${T.personaKicker(site.name)}</p>
       <h2 class="display xl" ${anim(1)}>${esc(persona.name).replace(' ', '<br>')}</h2>
       <div class="spacer"></div>
       <div class="traits">
-        ${TRAITS.map((name, i) => `
+        ${T.traits.map((name, i) => `
         <div class="glass trait" ${anim(i + 2)}>
           <div class="trait-top"><span>${name}</span><span>${count(s.persona.traits[i])}%</span></div>
           <div class="bar"><i style="--w:${Number(s.persona.traits[i])}%"></i></div>
@@ -226,13 +218,13 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     pose: [0.2, 0.0, 0.8, 1.2],
     hold: true,
     html: `
-      <h2 class="display l" ${anim(0)}>That's a wrap,<br><span class="grad" style="font-size:${fitHandle(s.handle)}cqw">@${esc(s.handle)}</span></h2>
+      <h2 class="display l" ${anim(0)}>${T.outro.title}<br><span class="grad" style="font-size:${fitHandle(s.handle)}cqw">@${esc(s.handle)}</span></h2>
       <div class="share-preview" ${anim(1)}>${shareCard}</div>
       <div class="actions" ${anim(2)}>
-        <button data-action="copy" class="primary">Copy share link</button>
-        <button data-action="gif">Save GIF</button>
-        <button data-action="png">Save card</button>
-        <button data-action="replay">Replay</button>
+        <button data-action="copy" class="primary">${T.outro.copy}</button>
+        <button data-action="gif">${T.outro.gif}</button>
+        <button data-action="png">${T.outro.png}</button>
+        <button data-action="replay">${T.outro.replay}</button>
       </div>`,
   };
 
@@ -241,18 +233,18 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'posts',
     pose: [-0.2, 0.32, -0.9, 1.05],
     html: `
-      <h2 class="display l" ${anim(0)}>You posted<br><span class="grad">${count(p.count)}</span> times.</h2>
+      <h2 class="display l" ${anim(0)}>${T.posts.title(count(p.count))}</h2>
       ${p.best ? `
-      <p class="kicker" ${anim(1)}>Your biggest post</p>
+      <p class="kicker" ${anim(1)}>${T.posts.biggest}</p>
       <div class="glass tweet" ${anim(2)}>
         <div class="tweet-head">${avatar(s.handle, s.avatar)}<span>@${esc(s.handle)}</span></div>
         <p class="tweet-text">${esc(p.best.text)}</p>
-        <p class="tweet-meta"><b>${compact(p.best.likes)}</b> likes${p.best.views ? ` · <b>${compact(p.best.views)}</b> views` : ''}</p>
+        <p class="tweet-meta">${T.plural(p.best.likes, 'like', (n) => `<b>${T.compact(n)}</b>`)}${p.best.views ? ` · ${T.plural(p.best.views, 'view', (n) => `<b>${T.compact(n)}</b>`)}` : ''}</p>
       </div>` : ''}
       <div class="tiles">
-        <div class="glass tile" ${anim(3)}><b>${count(p.count - p.replies)}</b><span>new posts</span></div>
-        <div class="glass tile" ${anim(4)}><b>${count(p.replies)}</b><span>replies</span></div>
-        ${p.retweets ? `<div class="glass tile" ${anim(5)}><b>${count(p.retweets)}</b><span>reposts</span></div>` : ''}
+        ${tile(3, p.count - p.replies, 'newPost')}
+        ${tile(4, p.replies, 'reply')}
+        ${p.retweets ? tile(5, p.retweets, 'repost') : ''}
       </div>`,
   } : null;
 
@@ -272,15 +264,17 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
 
 const score = (a: Account) => a.likes + a.saves + a.replies;
 
-function breakdown(a: Account) {
+function breakdown(T: Strings, a: Account) {
   return [
-    a.likes && `${fmt(a.likes)} likes`,
-    a.saves && `${fmt(a.saves)} saves`,
-    a.replies && `${fmt(a.replies)} replies`,
+    a.likes && T.plural(a.likes, 'like'),
+    a.saves && T.plural(a.saves, 'save'),
+    a.replies && T.plural(a.replies, 'reply'),
   ].filter(Boolean).join(' · ');
 }
 
-function waveChart(s: Summary) {
+function waveChart(T: Strings, s: Summary) {
+  const fmt = T.fmt;
+  const monthName = (key: string) => T.months[Number(key.slice(5, 7)) - 1];
   const W = 320, H = 200, P = 8;
   const rows = s.months;
   const sum = (r: Summary['months'][number]) => r.l + r.b + r.p;
@@ -315,8 +309,8 @@ function waveChart(s: Summary) {
       <path class="area saves" d="${area(saves)}" fill="url(#wg)" opacity=".55"/>
       <path class="line" d="${smooth(total)}" stroke="url(#wg)" pathLength="1"/>
       ${s.posts ? `<path class="line posts" d="${smooth(posts)}" pathLength="1"/>` : ''}
-      ${rows.map((r, i) => `<text class="month" x="${x(i)}" y="${H - 6}" text-anchor="middle">${monthName(r.m)[0]}</text>`).join('')}
+      ${rows.map((r, i) => `<text class="month" x="${x(i)}" y="${H - 6}" text-anchor="middle">${T.monthInitials[Number(r.m.slice(5, 7)) - 1]}</text>`).join('')}
       <g class="peak"><circle cx="${px}" cy="${py}" r="4"/><circle cx="${px}" cy="${py}" r="9" class="halo"/></g>
     </svg>
-    <div class="glass callout" ${anim(3)}><b>Peak: ${monthName(peak.m)} ${peak.m.slice(0, 4)}</b><span>${[`${fmt(peak.l)} likes`, `${fmt(peak.b)} saves`, s.posts && `${fmt(peak.p)} posts`].filter(Boolean).join(' · ')}</span></div>`;
+    <div class="glass callout" ${anim(3)}><b>${T.wave.peak(monthName(peak.m), peak.m.slice(0, 4))}</b><span>${[T.plural(peak.l, 'like'), T.plural(peak.b, 'save'), s.posts && T.plural(peak.p, 'post')].filter(Boolean).join(' · ')}</span></div>`;
 }

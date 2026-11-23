@@ -5,7 +5,8 @@ import { decodeSummary, encodeSummary } from './link';
 import { Ribbon } from './ribbon';
 import { download } from './share';
 import { esc, fmt, yearOf } from './slides';
-import { PERSONAS, PLATFORMS, parseExport, summarize, type ExportFile, type Kind, type Platform, type Summary } from './stats';
+import { STRINGS } from './i18n';
+import { PLATFORMS, parseExport, summarize, type ExportFile, type Kind, type Platform, type Summary } from './stats';
 import { playStory } from './story';
 import { SITE_URL } from './site';
 
@@ -54,7 +55,7 @@ async function storedExports(): Promise<ExportFile[]> {
 function landing(shared: Summary | null, token: string | null) {
   const year = shared ? yearOf(shared) : String(new Date().getFullYear());
   const cards = shared
-    ? [`${fmt(shared.likes)} likes`, `${fmt(shared.bookmarks)} ${PLATFORMS[shared.p].saves}`, PERSONAS[shared.persona.id].name]
+    ? [`${fmt(shared.likes)} likes`, `${fmt(shared.bookmarks)} ${PLATFORMS[shared.p].saves}`, STRINGS[shared.l].persona[shared.persona.id].name]
     : ['Top accounts', 'The Vault', 'Your persona'];
   const fileButton = (label: string, cls: string) => `
     <label class="${cls} file-btn">${label}<input type="file" accept=".json,.zip,application/json,application/zip" multiple hidden></label>`;

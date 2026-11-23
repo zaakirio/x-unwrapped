@@ -75,7 +75,8 @@ button.secondary, label.secondary, .actions button:not(.primary) {
   position: relative; container-type: size; overflow: hidden; user-select: none; touch-action: manipulation;
   height: min(100dvh, 177.78vw); aspect-ratio: 9 / 16; background: var(--bg);
 }
-@media (min-width: 600px) { .frame { height: min(94dvh, 960px); border-radius: 28px; box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6); } }
+/* Card look only where the screen is wider than the story; portrait screens show it full-bleed. */
+@media (min-width: 600px) and (min-aspect-ratio: 10 / 16) { .frame { height: min(94dvh, 960px); border-radius: 28px; box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6); } }
 .frame canvas.ribbon { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .progress { position: absolute; z-index: 5; top: 2.2cqw; left: 3cqw; right: 12cqw; display: flex; gap: 1cqw; }
@@ -149,7 +150,8 @@ button.secondary, label.secondary, .actions button:not(.primary) {
   background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.35), transparent 45%), var(--fill);
   box-shadow: inset 0 0 4cqw rgba(255, 255, 255, 0.15), 0 0 8cqw color-mix(in oklab, var(--glow), transparent 55%);
 }
-.bubble .t { font-weight: 800; font-size: calc(var(--size) * 0.16); letter-spacing: -0.03em; }
+/* Long labels shrink so they stay inside the bubble. */
+.bubble .t { font-weight: 800; font-size: calc(var(--size) * min(0.16, 1.15 / var(--len, 6))); letter-spacing: -0.03em; }
 .bubble .p { font-weight: 840; font-size: calc(var(--size) * 0.24); letter-spacing: -0.05em; line-height: 1; }
 .bubble.b0 { --fill: linear-gradient(140deg, #2a7bff, #7a35ff); --glow: #4a5bff; }
 .bubble.b1 { --fill: linear-gradient(140deg, #8f3cff, #e04bd6); --glow: #b23cff; }

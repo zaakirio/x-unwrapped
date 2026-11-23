@@ -1,4 +1,5 @@
 // Turns x-export JSON files into the small summary that the story shows and the share link carries.
+import { scriptLang, type Lang } from './i18n';
 
 export interface Tweet {
   id: string;
@@ -45,6 +46,8 @@ export interface Account {
 export interface Summary {
   v: 1;
   p: Platform;
+  // The story's language: the one most of the year's posts are written in.
+  l: Lang;
   handle: string;
   avatar: string | null;
   from: string;
@@ -76,19 +79,55 @@ const DAY_MS = 86_400_000;
 const NICHE_LIKES = 1000;
 const NON_LANGS = new Set(['zxx', 'qme', 'qam', 'qct', 'qht', 'qst', 'und', 'art']);
 
+// Russian words change their endings, so a stem ending in * matches any ending; other words match whole.
+// JavaScript's \b only knows Latin letters, hence the explicit letter lookarounds.
+function ru(...words: string[]) {
+  const alts = words.map((w) => (w.endsWith('*') ? `${w.slice(0, -1)}\\p{L}*` : w));
+  return new RegExp(`(?<!\\p{L})(?:${alts.join('|')})(?!\\p{L})`, 'iu');
+}
+
 // Order matters only for display; a post can count toward several topics.
-export const TOPICS: [string, RegExp][] = [
-  ['AI', /\b(ai|a\.i\.|llms?|gpt[-\d.o]*|openai|anthropic|claude|gemini|grok|chatgpt|agents?|agentic|models?|prompts?|inference|fine-?tun\w*|tokens?|transformer|diffusion|midjourney|sora|veo|karpathy|deepseek|qwen|mcp|rag|embeddings?|neural|agi)\b/i],
-  ['Code', /\b(code|coding|coder|devs?|developers?|programming|typescript|javascript|python|rust|golang|react|nextjs|next\.js|vite|api|apis|github|open[- ]source|repo|cli|terminal|backend|frontend|database|postgres|sql|deploy\w*|bug|compiler|vibe ?cod\w*|npm|npx|linux|kernel)\b/i],
-  ['Design', /\b(design\w*|ui|ux|figma|typography|fonts?|illustrat\w*|animation|motion|3d|blender|shaders?|art|artist|aesthetic|visuals?|render\w*|pixel|branding|logo|color|colour)\b/i],
-  ['Startups', /\b(startups?|founders?|revenue|mrr|arr|saas|vcs?|funding|raised|seed|series [a-c]|yc|ycombinator|indie ?hack\w*|bootstrap\w*|customers?|growth|launch\w*|product hunt|ship(ped|ping)?|business)\b/i],
-  ['Crypto', /\b(crypto|bitcoin|btc|eth|ethereum|solana|sol|web3|defi|nfts?|tokenomics|memecoins?|blockchain|onchain|wallet|airdrop|stablecoins?)\b/i],
-  ['Security', /\b(hack\w*|exploit\w*|malware|ransomware|vulnerab\w*|cve|0day|zero-day|breach\w*|infosec|cybersec\w*|phishing|backdoor|pentest\w*)\b/i],
-  ['Games', /\b(games?|gaming|gamer|playstation|ps5|xbox|nintendo|switch 2|steam|unity|unreal|godot|indie game|esports|minecraft|gta)\b/i],
-  ['Health', /\b(health\w*|sleep|fitness|workout|gym|longevity|diet|nutrition|protein|fasting|brain|biology|medic\w*|doctor|cancer|aging|blueprint)\b/i],
-  ['Science', /\b(science|scientists?|physics|space|nasa|spacex|rocket|starship|mars|quantum|research\w*|papers?|universe|telescope|math\w*)\b/i],
-  ['Sport', /\b(football|soccer|premier league|champions league|goal|nba|nfl|f1|formula 1|ufc|boxing|cricket|tennis|messi|ronaldo|arsenal|chelsea|liverpool|madrid|barcelona)\b/i],
-  ['World', /\b(politic\w*|elections?|president|government|congress|senate|trump|biden|war|ukraine|russia|israel|gaza|china|economy|inflation|tariffs?|policy)\b/i],
+export const TOPICS: [string, RegExp, RegExp][] = [
+  ['AI', /\b(ai|a\.i\.|llms?|gpt[-\d.o]*|openai|anthropic|claude|gemini|grok|chatgpt|agents?|agentic|models?|prompts?|inference|fine-?tun\w*|tokens?|transformer|diffusion|midjourney|sora|veo|karpathy|deepseek|qwen|mcp|rag|embeddings?|neural|agi)\b/i,
+    ru('ии', 'нейросет*', 'нейронк*', 'искусственн*', 'промпт*', 'чатгпт', 'джипити')],
+  ['Code', /\b(code|coding|coder|devs?|developers?|programming|typescript|javascript|python|rust|golang|react|nextjs|next\.js|vite|api|apis|github|open[- ]source|repo|cli|terminal|backend|frontend|database|postgres|sql|deploy\w*|bug|compiler|vibe ?cod\w*|npm|npx|linux|kernel)\b/i,
+    ru('программист*', 'программирован*', 'код', 'кода', 'коде', 'кодинг*', 'разработчик*', 'айти', 'айтишн*', 'фронтенд*', 'бэкенд*')],
+  ['Design', /\b(design\w*|ui|ux|figma|typography|fonts?|illustrat\w*|animation|motion|3d|blender|shaders?|art|artist|aesthetic|visuals?|render\w*|pixel|branding|logo|color|colour)\b/i,
+    ru('дизайн*', 'иллюстрац*', 'шрифт*', 'анимац*', 'рисун*', 'рисова*', 'художни*', 'искусство', 'искусства', 'искусству', 'искусством', 'эстетик*', 'арт')],
+  ['Startups', /\b(startups?|founders?|revenue|mrr|arr|saas|vcs?|funding|raised|seed|series [a-c]|yc|ycombinator|indie ?hack\w*|bootstrap\w*|customers?|growth|launch\w*|product hunt|ship(ped|ping)?|business)\b/i,
+    ru('стартап*', 'бизнес*', 'предпринимател*', 'клиент*', 'продаж*', 'маркетинг*', 'бренд*', 'инвестиц*', 'инвестор*')],
+  ['Crypto', /\b(crypto|bitcoin|btc|eth|ethereum|solana|sol|web3|defi|nfts?|tokenomics|memecoins?|blockchain|onchain|wallet|airdrop|stablecoins?)\b/i,
+    ru('крипт*', 'биткоин*', 'биток*', 'блокчейн*', 'нфт')],
+  ['Security', /\b(hack\w*|exploit\w*|malware|ransomware|vulnerab\w*|cve|0day|zero-day|breach\w*|infosec|cybersec\w*|phishing|backdoor|pentest\w*)\b/i,
+    ru('хакер*', 'взлом*', 'мошенни*', 'скам*', 'фишинг*')],
+  ['Games', /\b(games?|gaming|gamer|playstation|ps5|xbox|nintendo|switch 2|steam|unity|unreal|godot|indie game|esports|minecraft|gta)\b/i,
+    ru('видеоигр*', 'геймер*', 'гейминг*', 'плейстейшн*', 'приставк*', 'дота*', 'доту', 'стример*')],
+  ['Health', /\b(health\w*|sleep|fitness|workout|gym|longevity|diet|nutrition|protein|fasting|brain|biology|medic\w*|doctor|cancer|aging|blueprint|therapy|therapist)\b/i,
+    ru('здоровь*', 'здоровый', 'здорового', 'трениров*', 'фитнес*', 'диет*', 'похуде*', 'врач*', 'болезн*', 'болит', 'лечени*', 'таблетк*', 'психолог*', 'терапи*', 'витамин*', 'калори*')],
+  ['Science', /\b(science|scientists?|physics|space|nasa|spacex|rocket|starship|mars|quantum|research\w*|papers?|universe|telescope|math\w*)\b/i,
+    ru('наук*', 'учён*', 'учен*', 'космос*', 'физик*', 'исследован*', 'вселенн*')],
+  ['Sport', /\b(football|soccer|premier league|champions league|goal|nba|nfl|f1|formula 1|ufc|boxing|cricket|tennis|messi|ronaldo|arsenal|chelsea|liverpool|madrid|barcelona)\b/i,
+    ru('футбол*', 'матч*', 'баскетбол*', 'бокс', 'боксе', 'боксом', 'боксёр*', 'боксер*', 'теннис*', 'хоккей*', 'олимпиад*', 'чемпионат*')],
+  ['World', /\b(politic\w*|elections?|president|government|congress|senate|trump|biden|war|ukraine|russia|israel|gaza|china|economy|inflation|tariffs?|policy)\b/i,
+    ru('политик*', 'выборы', 'выборах', 'выборов', 'президент*', 'правительств*', 'войн*', 'санкци*', 'депутат*', 'путин*', 'токаев*')],
+  ['Love', /\b(relationships?|boyfriend|girlfriend|husband|wife|dating|crush|ex|breakup|broke up|wedding|married|love|in love)\b/i,
+    ru('отношени*', 'парень', 'парня', 'парнем', 'девушк*', 'муж', 'мужа', 'мужу', 'мужем', 'жена', 'жену', 'жене', 'женой', 'бывш*', 'свидани*', 'любов*', 'люблю', 'влюб*', 'расстал*', 'измен*', 'свадьб*', 'краш*', 'замуж*', 'женат*')],
+  ['Beauty', /\b(makeup|skincare|nails?|manicure|hair|haircut|lashes|brows|outfits?|dress|fashion|style|beauty|perfume|lipstick|shopping)\b/i,
+    ru('макияж*', 'косметик*', 'маникюр*', 'ногт*', 'волос*', 'стрижк*', 'ресниц*', 'бров*', 'платье', 'платья', 'одежд*', 'шоппинг*', 'сумк*', 'туфл*', 'кроссовк*', 'стилист*', 'парфюм*', 'духи')],
+  ['Food', /\b(food|recipes?|coffee|cafe|restaurants?|dinner|breakfast|lunch|cake|pizza|sushi|dessert|chocolate|cook\w*|baking|delicious|hungry)\b/i,
+    ru('еда', 'еду', 'еды', 'едой', 'вкусн*', 'рецепт*', 'кофе', 'кафе', 'ресторан*', 'ужин*', 'завтрак*', 'обед*', 'торт*', 'пицц*', 'суши', 'десерт*', 'пирож*', 'шоколад*', 'поесть', 'голодн*')],
+  ['Travel', /\b(travel\w*|trips?|vacation|holidays?|flights?|airport|hotels?|beach|passport)\b/i,
+    ru('путешеств*', 'поездк*', 'отпуск', 'отпуска', 'отпуске', 'отпусках', 'отпуску', 'самол[её]т*', 'аэропорт*', 'перел[её]т*', 'отел*', 'гостиниц*', 'море', 'моря', 'морю', 'пляж*')],
+  ['Music', /\b(music|songs?|albums?|concerts?|singer|rapper|playlists?|spotify|tracks?)\b/i,
+    ru('музык*', 'песн*', 'песня', 'трек', 'трека', 'треки', 'треков', 'альбом*', 'концерт*', 'певиц*', 'певец', 'певца', 'рэп*', 'клип*', 'плейлист*')],
+  ['Screen', /\b(movies?|films?|series|tv shows?|netflix|actor|actress|anime|episodes?|cinema)\b/i,
+    ru('фильм*', 'кино', 'сериал*', 'акт[её]р*', 'актрис*', 'нетфликс*', 'мультик*', 'аниме', 'сезон*')],
+  ['Family', /\b(mom|mum|dad|parents?|kids?|child|children|son|daughter|baby|babies|family|pregnan\w*|grandma|grandpa)\b/i,
+    ru('мам*', 'папа', 'папы', 'папе', 'папу', 'родител*', 'реб[её]н*', 'дети', 'детей', 'детям', 'детьми', 'сын*', 'дочь', 'дочк*', 'дочер*', 'бабушк*', 'дедушк*', 'семья', 'семьи', 'семье', 'семью', 'семь[её]й', 'семейн*', 'беременн*', 'малыш*')],
+  ['Pets', /\b(cats?|kittens?|dogs?|pupp(y|ies)|pets?)\b/i,
+    ru('кот', 'кота', 'коту', 'котом', 'котик*', 'кошк*', 'кот[её]н*', 'котят*', 'собак*', 'собачк*', 'п[её]с', 'пса', 'щен*', 'питом*')],
+  ['Money', /\b(money|salary|rent|mortgage|loans?|debt|budget|expensive|cheap|discount)\b/i,
+    ru('деньг*', 'денег', 'зарплат*', 'кредит*', 'ипотек*', 'тенге', 'рубл*', 'доллар*', 'бюджет*', 'долг', 'долга', 'долги', 'долгов', 'долгу', 'дорого', 'дешево', 'дёшево', 'скидк*')],
 ];
 
 export function parseExport(text: string): ExportFile {
@@ -137,8 +176,8 @@ export function topicShares(tweets: Tweet[]) {
   let tagged = 0;
   for (const t of tweets) {
     let hit = false;
-    for (const [k, re] of TOPICS) {
-      if (re.test(t.text || '')) {
+    for (const [k, en, ruRe] of TOPICS) {
+      if (en.test(t.text || '') || ruRe.test(t.text || '')) {
         counts.set(k, (counts.get(k) || 0) + 1);
         hit = true;
       }
@@ -261,6 +300,12 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
   const best = own.reduce<Tweet | null>((b, t) => ((t.metrics?.likes ?? 0) > (b?.metrics?.likes ?? -1) ? t : b), null);
 
   const topics = topicShares([...all, ...own]);
+  const langOf = (t: Tweet) => t.lang || scriptLang(t.text || '');
+  const votes = { en: 0, ru: 0 };
+  for (const t of own.length >= 10 ? own : [...all, ...own]) {
+    const l = scriptLang(t.text || '');
+    if (l) votes[l]++;
+  }
   const saveRatio = likes.length ? saves.length / likes.length : saves.length ? 1 : 0;
   const builderShare = topics.top.filter((t) => t.k === 'AI' || t.k === 'Code').reduce((s, t) => s + t.p, 0) / 100;
   const mediaShare = (video + photo) / Math.max(1, all.length);
@@ -270,6 +315,7 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
   return {
     v: 1,
     p: platform,
+    l: votes.ru > votes.en ? 'ru' : 'en',
     handle,
     avatar: bigAvatar(files.find((f) => f.avatar)?.avatar || avatars.get(handle.toLowerCase())),
     from: new Date(from).toISOString().slice(0, 10),
@@ -308,7 +354,7 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
         }
       : null,
     media: { video: pct(video, all.length), photo: pct(photo, all.length), text: pct(all.length - video - photo, all.length) },
-    langs: new Set([...all, ...own].map((t) => t.lang).filter((l) => l && !NON_LANGS.has(l))).size,
+    langs: new Set([...all, ...own].map(langOf).filter((l) => l && !NON_LANGS.has(l))).size,
     persona: {
       id: persona,
       traits: [topics.range, Math.min(100, niche * 2), Math.min(100, Math.round(saveRatio * 100))],
@@ -329,13 +375,4 @@ export function pickPersona(s: { saveRatio: number; builderShare: number; mediaS
   return score >= 1 ? id : 'wanderer';
 }
 
-export const TRAITS = ['Range', 'Underground', 'Hoarding'] as const;
-
-export const PERSONAS: Record<PersonaId, { name: string; line: string }> = {
-  curator: { name: 'The Curator', line: 'Your bookmarks have bookmarks.' },
-  builder: { name: 'The Builder', line: 'You scroll like you ship: fast, and for parts.' },
-  visualist: { name: 'The Visualist', line: 'You read with your eyes. Mostly the pictures.' },
-  scout: { name: 'The Scout', line: 'You liked it before it had likes.' },
-  broadcaster: { name: 'The Broadcaster', line: 'You came to talk, not to scroll.' },
-  wanderer: { name: 'The Wanderer', line: 'No algorithm can pin you down.' },
-};
+export const PERSONA_IDS: PersonaId[] = ['curator', 'builder', 'visualist', 'scout', 'broadcaster', 'wanderer'];

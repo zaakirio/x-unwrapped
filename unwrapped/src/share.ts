@@ -1,9 +1,10 @@
 // The square share card: drawn on a 2D canvas over the ribbon so one renderer serves the live preview, the PNG and the GIF.
 import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import { Ribbon, type Pose } from './ribbon';
-import { fmt, yearOf } from './slides';
+import { STRINGS } from './i18n';
+import { yearOf } from './slides';
 import { SITE_HOST } from './site';
-import { PERSONAS, PLATFORMS, type Summary } from './stats';
+import { PLATFORMS, type Summary } from './stats';
 
 const FONT = '"Inter Variable", Inter, system-ui, sans-serif';
 const INK = '#f6f3ee';
@@ -23,7 +24,7 @@ export class CardRenderer {
   private ribbon: Ribbon;
   private ctx: CanvasRenderingContext2D;
 
-  constructor(readonly size: number, private s: Summary, private host = SITE_HOST ?? `${PLATFORMS[s.p].name} Unwrapped`) {
+  constructor(readonly size: number, private s: Summary, private host = SITE_HOST ?? STRINGS[s.l].card.title(PLATFORMS[s.p].name)) {
     this.canvas.width = this.canvas.height = this.glCanvas.width = this.glCanvas.height = size;
     this.ribbon = new Ribbon(this.glCanvas, true);
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
@@ -41,7 +42,8 @@ export class CardRenderer {
     const a = fade(0.25);
     ctx.globalAlpha = a;
     ctx.fillStyle = INK;
-    const title = `${PLATFORMS[s.p].name} Unwrapped`;
+    const T = STRINGS[s.l];
+    const title = T.card.title(PLATFORMS[s.p].name);
     ctx.font = `800 ${136 * u}px ${FONT}`;
     ctx.letterSpacing = `${-6 * u}px`;
     // Longer platform names shrink to keep the title inside the card margins.
@@ -54,10 +56,10 @@ export class CardRenderer {
     ctx.fillText(yearOf(s), 84 * u, (380 + 40 * (1 - a)) * u);
     ctx.globalAlpha = 1;
 
-    const pills: [number, string][] = [
-      [s.likes, 'likes'],
-      [s.bookmarks, PLATFORMS[s.p].saves],
-      [s.accounts, 'accounts'],
+    const pills: [number, 'like' | 'save' | 'bookmark' | 'account'][] = [
+      [s.likes, 'like'],
+      [s.bookmarks, PLATFORMS[s.p].save as 'save' | 'bookmark'],
+      [s.accounts, 'account'],
     ];
     pills.forEach(([value, label], i) => {
       const start = 0.9 + i * 0.3;
@@ -71,13 +73,13 @@ export class CardRenderer {
       ctx.fillStyle = INK;
       ctx.font = `800 ${86 * u}px ${FONT}`;
       ctx.letterSpacing = `${-3 * u}px`;
-      ctx.fillText(`${fmt(shown)} ${label}`, x + 52 * u, y + 100 * u);
+      ctx.fillText(T.plural(shown, label), x + 52 * u, y + 100 * u);
       ctx.globalAlpha = 1;
     });
 
     const chip = fade(2.3, 0.5);
     if (chip > 0) {
-      const name = PERSONAS[s.persona.id].name;
+      const name = T.persona[s.persona.id].name;
       ctx.font = `700 ${42 * u}px ${FONT}`;
       ctx.letterSpacing = '0px';
       const w = ctx.measureText(name).width + 80 * u;
@@ -110,7 +112,7 @@ export class CardRenderer {
     ctx.font = `600 ${32 * u}px ${FONT}`;
     ctx.letterSpacing = '0px';
     ctx.fillStyle = 'rgba(246,243,238,.72)';
-    ctx.fillText(`${this.host} · 12 months of likes and ${PLATFORMS[s.p].saves}`, 84 * u, 1036 * u);
+    ctx.fillText(T.card.footer(this.host, PLATFORMS[s.p].saves), 84 * u, 1036 * u);
     ctx.globalAlpha = 1;
   }
 

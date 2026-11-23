@@ -1,5 +1,5 @@
 // The share link carries the summary in the URL fragment, which browsers never send to the server.
-import { PERSONAS, type PersonaId, type Summary } from './stats';
+import { PERSONA_IDS, type PersonaId, type Summary } from './stats';
 
 async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream) {
   return new Uint8Array(await new Response(new Blob([bytes as BlobPart]).stream().pipeThrough(stream)).arrayBuffer());
@@ -46,10 +46,11 @@ function clean(s: any): Summary {
   };
   const clock = String(s.clock);
   if (!/^[0-9]{168}$/.test(clock)) throw new Error('Bad clock in link.');
-  if (!(s.persona?.id in PERSONAS)) throw new Error('Bad persona in link.');
+  if (!PERSONA_IDS.includes(s.persona?.id)) throw new Error('Bad persona in link.');
   return {
     v: 1,
     p: s.p === 'threads' ? 'threads' : 'x',
+    l: s.l === 'ru' ? 'ru' : 'en',
     handle: str(s.handle),
     avatar: avatar(s.avatar),
     from: date(s.from),

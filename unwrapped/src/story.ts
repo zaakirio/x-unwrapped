@@ -1,11 +1,13 @@
 import { Ribbon, type Pose } from './ribbon';
 import { CardRenderer, cardGif, cardPng, download, fontsReady } from './share';
-import { buildSlides, fmt } from './slides';
+import { STRINGS } from './i18n';
+import { buildSlides } from './slides';
 import type { Summary } from './stats';
 
 const SLIDE_MS = 7000;
 
 export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null, onExit: () => void) {
+  const T = STRINGS[s.l];
   const slides = buildSlides(s, '<canvas class="card-canvas" width="540" height="540"></canvas>');
   root.innerHTML = `
     <div class="stage">
@@ -63,7 +65,7 @@ export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null
     const t0 = performance.now() + 350;
     const step = (now: number) => {
       const p = Math.min(1, Math.max(0, (now - t0) / 1400));
-      el.textContent = fmt(Math.round(target * (1 - Math.pow(1 - p, 4))));
+      el.textContent = T.fmt(Math.round(target * (1 - Math.pow(1 - p, 4))));
       if (p < 1 && alive) requestAnimationFrame(step);
     };
     el.textContent = '0';
@@ -133,9 +135,9 @@ export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null
     };
     switch (btn.dataset.action) {
       case 'copy':
-        if (!shareUrl) return flash('Site not set up yet');
+        if (!shareUrl) return flash(T.outro.noSite);
         await navigator.clipboard.writeText(shareUrl);
-        flash('Link copied');
+        flash(T.outro.copied);
         break;
       case 'png':
         download(await cardPng(s), file('png'));
@@ -143,7 +145,7 @@ export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null
       case 'gif':
         btn.disabled = true;
         try {
-          download(await cardGif(s, (p) => (btn.textContent = `Rendering ${Math.round(p * 100)}%`)), file('gif'));
+          download(await cardGif(s, (p) => (btn.textContent = T.outro.rendering(Math.round(p * 100)))), file('gif'));
         } finally {
           btn.disabled = false;
           btn.textContent = label;
