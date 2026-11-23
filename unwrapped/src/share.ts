@@ -3,7 +3,7 @@ import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import { Ribbon, type Pose } from './ribbon';
 import { fmt, yearOf } from './slides';
 import { SITE_HOST } from './site';
-import { PERSONAS, type Summary } from './stats';
+import { PERSONAS, PLATFORMS, type Summary } from './stats';
 
 const FONT = '"Inter Variable", Inter, system-ui, sans-serif';
 const INK = '#f6f3ee';
@@ -23,7 +23,7 @@ export class CardRenderer {
   private ribbon: Ribbon;
   private ctx: CanvasRenderingContext2D;
 
-  constructor(readonly size: number, private s: Summary, private host = SITE_HOST) {
+  constructor(readonly size: number, private s: Summary, private host = SITE_HOST ?? `${PLATFORMS[s.p].name} Unwrapped`) {
     this.canvas.width = this.canvas.height = this.glCanvas.width = this.glCanvas.height = size;
     this.ribbon = new Ribbon(this.glCanvas, true);
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
@@ -41,15 +41,22 @@ export class CardRenderer {
     const a = fade(0.25);
     ctx.globalAlpha = a;
     ctx.fillStyle = INK;
+    const title = `${PLATFORMS[s.p].name} Unwrapped`;
     ctx.font = `800 ${136 * u}px ${FONT}`;
     ctx.letterSpacing = `${-6 * u}px`;
-    ctx.fillText('X Unwrapped', 84 * u, (230 + 40 * (1 - a)) * u);
+    // Longer platform names shrink to keep the title inside the card margins.
+    const fit = Math.min(1, (912 * u) / ctx.measureText(title).width);
+    ctx.font = `800 ${136 * u * fit}px ${FONT}`;
+    ctx.letterSpacing = `${-6 * u * fit}px`;
+    ctx.fillText(title, 84 * u, (230 + 40 * (1 - a)) * u);
+    ctx.font = `800 ${136 * u}px ${FONT}`;
+    ctx.letterSpacing = `${-6 * u}px`;
     ctx.fillText(yearOf(s), 84 * u, (380 + 40 * (1 - a)) * u);
     ctx.globalAlpha = 1;
 
     const pills: [number, string][] = [
       [s.likes, 'likes'],
-      [s.bookmarks, 'bookmarks'],
+      [s.bookmarks, PLATFORMS[s.p].saves],
       [s.accounts, 'accounts'],
     ];
     pills.forEach(([value, label], i) => {
@@ -103,7 +110,7 @@ export class CardRenderer {
     ctx.font = `600 ${32 * u}px ${FONT}`;
     ctx.letterSpacing = '0px';
     ctx.fillStyle = 'rgba(246,243,238,.72)';
-    ctx.fillText(`${this.host} · 12 months of likes and bookmarks`, 84 * u, 1036 * u);
+    ctx.fillText(`${this.host} · 12 months of likes and ${PLATFORMS[s.p].saves}`, 84 * u, 1036 * u);
     ctx.globalAlpha = 1;
   }
 

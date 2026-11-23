@@ -1,7 +1,8 @@
-// Content script on x.com. When this tab belongs to a running job, it starts the exporter on the
-// right page, relays its progress and result to the background worker, and shows a progress overlay.
+// Content script on x.com and threads.com. When this tab belongs to a running job, it starts the
+// collector on the right page, relays its progress and result to the background worker, and shows a progress overlay.
 
-const LABELS = { likes: 'Likes', bookmarks: 'Bookmarks', posts: 'Posts' };
+const THREADS = location.hostname.endsWith('threads.com');
+const LABELS = { likes: 'Likes', bookmarks: THREADS ? 'Saved' : 'Bookmarks', posts: 'Posts' };
 const STALL_MS = 25_000;
 
 const until = (test, every = 300) =>
@@ -10,8 +11,13 @@ const until = (test, every = 300) =>
     check();
   });
 
-const profileLink = () => document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
-const onLoginPage = () => /^\/(i\/flow\/login|login|i\/flow\/signup)/.test(location.pathname) || location.pathname === '/';
+// The signed-in user's own profile link in the side bar, as a handle without the leading / or /@.
+function viewerHandle() {
+  if (!THREADS) return document.querySelector('a[data-testid="AppTabBar_Profile_Link"]')?.getAttribute('href').slice(1) || null;
+  const link = [...document.querySelectorAll('a[href^="/@"]')].find((a) => a.querySelector('svg[aria-label="Profile"]'));
+  return link ? link.getAttribute('href').slice(2).replace(/\/.*$/, '') : null;
+}
+const onLoginPage = () => /^\/(i\/flow\/login|login|i\/flow\/signup)/.test(location.pathname) || (!THREADS && location.pathname === '/');
 
 async function main() {
   const job = await chrome.runtime.sendMessage({ type: 'job?' });
@@ -21,14 +27,15 @@ async function main() {
   render(overlay, (await chrome.storage.local.get('job')).job);
   chrome.storage.onChanged.addListener((changes) => changes.job && render(overlay, changes.job.newValue));
 
-  await until(() => profileLink() || onLoginPage());
-  if (!profileLink()) {
-    overlay.note('Log in to X in this tab. Unwrapping starts right after.');
-    await until(profileLink, 1000);
+  await until(() => viewerHandle() || onLoginPage());
+  if (!viewerHandle()) {
+    overlay.note(`Log in to ${THREADS ? 'Threads' : 'X'} in this tab. Unwrapping starts right after.`);
+    await until(viewerHandle, 1000);
   }
 
-  const handle = profileLink().getAttribute('href').slice(1);
-  const url = job.kind === 'posts' && job.url.endsWith('/null/with_replies') ? `https://x.com/${handle}/with_replies` : job.url;
+  // The first list may not name the account; fill it in from the side bar.
+  const handle = viewerHandle();
+  const url = job.url.replace(/\/(@?)null(\/|$)/, `/$1${handle}$2`);
   if (location.pathname.toLowerCase() !== new URL(url).pathname.toLowerCase()) {
     location.assign(url);
     return;
@@ -54,7 +61,7 @@ async function main() {
     }
   });
 
-  window.postMessage({ source: 'xunwrapped-bridge', type: 'run', cutoff: job.cutoff }, location.origin);
+  window.postMessage({ source: 'xunwrapped-bridge', type: 'run', kind: job.kind, cutoff: job.cutoff }, location.origin);
   // The exporter only starts on a page it recognises; if nothing moves, say so instead of hanging.
   const stall = setInterval(() => {
     if (Date.now() - lastProgress > STALL_MS) {

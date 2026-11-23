@@ -54,7 +54,7 @@ The fixtures are trimmed copies of real `Likes` responses.
 Everything runs in the browser; nothing is uploaded.
 There are three ways in.
 
-1. The Chrome extension. Press "Make my Unwrapped" and it opens X in a new tab, scrolls your likes, bookmarks and posts back 12 months, then plays the story. It can also download the collected JSON.
+1. The Chrome extension. Press "Unwrap my X" or "Unwrap my Threads" and it opens the site in a new tab, scrolls your likes, bookmarks (Saved on Threads) and posts back 12 months, then plays the story. It can also download the collected JSON.
 2. Your official X archive (Settings, Your account, Download an archive of your data). Drop the zip on the page. It gives likes and your posts with exact dates, but no bookmarks and no authors for likes.
 3. The JSON files from the userscript above.
 
@@ -72,5 +72,9 @@ Set `VITE_SITE_URL` to the hosted site when you build the extension, so its shar
 X does not record when you liked or saved a post, only the order, so each action is dated by the newest post below it in the list.
 The extension stops a list once 40 posts in a row are older than 12 months.
 With enough of your own posts, the clock slide shows when you post; otherwise it shows when the posts you liked went live.
+
+On Threads the extension reads Liked, Saved, and the Threads and Replies tabs of your profile, from the posts Threads already puts in the page and loads as it scrolls.
+Threads serves profile pictures only to its own pages, so the extension fetches them itself for the story; share links leave them out and show gradient orbs instead.
+Threads data archives are not supported yet.
 
 The share link puts the summary stats (counts, top accounts with their profile picture URLs, topics, persona, your top post's text) in the URL fragment, which browsers do not send to the server.

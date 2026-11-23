@@ -1,5 +1,5 @@
 import type { Pose } from './ribbon';
-import { PERSONAS, TRAITS, type Account, type Summary } from './stats';
+import { PERSONAS, PLATFORMS, TRAITS, type Account, type Summary } from './stats';
 
 export interface Slide {
   id: string;
@@ -78,16 +78,18 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
   const [moodIcon, mood] = feedMood(s.peakHour);
   const mine = s.clockOf === 'you';
   const persona = PERSONAS[s.persona.id];
+  const site = PLATFORMS[s.p];
+  const Saves = site.saves[0].toUpperCase() + site.saves.slice(1);
 
   const intro: Slide = {
     id: 'intro',
     pose: [0.1, -0.06, 0.85, 1.15],
     html: `
-      <h1 class="display xl" ${anim(0)}>Your X<br>Unwrapped<br>${esc(year)}</h1>
+      <h1 class="display xl" ${anim(0)}>Your ${site.name}<br>Unwrapped<br>${esc(year)}</h1>
       <div class="spacer"></div>
       <div class="glass stat-line" ${anim(3)}>12 months. ${[
         s.likes && plural(s.likes, 'like'),
-        s.bookmarks && plural(s.bookmarks, 'bookmark'),
+        s.bookmarks && plural(s.bookmarks, site.save),
         s.posts?.count && plural(s.posts.count, 'post'),
         !s.posts?.count && s.accounts && plural(s.accounts, 'account'),
       ].filter(Boolean).join('. ')}.</div>
@@ -117,7 +119,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
           <span class="num">${fmt(score(a))}</span>
         </li>`).join('')}
       </ol>
-      <p class="foot" ${anim(7)}>Ranked by your likes, bookmarks and replies across ${fmt(s.accounts)} accounts.</p>`,
+      <p class="foot" ${anim(7)}>Ranked by your likes, ${site.saves} and replies across ${fmt(s.accounts)} accounts.</p>`,
   };
 
   const cells = [...s.clock].map((v, i) => {
@@ -128,7 +130,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'clock',
     pose: [0.15, 0.08, 0.6, 1.05],
     html: `
-      <h2 class="display l" ${anim(0)}>${mine ? 'You live<br>on X at' : 'The posts you<br>love drop at'}<br><span class="grad">${hourLabel(s.peakHour)}</span></h2>
+      <h2 class="display l" ${anim(0)}>${mine ? `You live<br>on ${site.name} at` : 'The posts you<br>love drop at'}<br><span class="grad">${hourLabel(s.peakHour)}</span></h2>
       <div class="spacer"></div>
       <div class="glass heatmap" ${anim(2)}>
         <div class="days">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div>
@@ -195,15 +197,15 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     html: `
       <h2 class="display l" ${anim(0)}>Your year<br>in a wave.</h2>
       ${waveChart(s)}
-      <div class="legend" ${anim(4)}><span class="k likes">Likes</span><span class="k saves">Bookmarks</span>${s.posts ? '<span class="k posts">Posts</span>' : ''}</div>
-      <p class="foot" ${anim(5)}>X does not log when you liked a post, so each like is dated by its place in your list.</p>`,
+      <div class="legend" ${anim(4)}><span class="k likes">Likes</span><span class="k saves">${Saves}</span>${s.posts ? '<span class="k posts">Posts</span>' : ''}</div>
+      <p class="foot" ${anim(5)}>${site.name} does not show when you liked a post, so each like is dated by its place in your list.</p>`,
   };
 
   const personaSlide: Slide = {
     id: 'persona',
     pose: [0.05, 0.12, 2.2, 0.75],
     html: `
-      <p class="kicker" ${anim(0)}>Your X personality</p>
+      <p class="kicker" ${anim(0)}>Your ${site.name} personality</p>
       <h2 class="display xl" ${anim(1)}>${esc(persona.name).replace(' ', '<br>')}</h2>
       <div class="spacer"></div>
       <div class="traits">

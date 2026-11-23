@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "X Unwrapped",
-  "version": "1.0.0",
-  "description": "Your last 12 months on X, unwrapped. Collects your likes, bookmarks and posts in your own browser.",
+  "version": "1.1.0",
+  "description": "Your last 12 months on X or Threads, unwrapped. Collects your likes, saves and posts in your own browser.",
   "action": { "default_title": "X Unwrapped" },
   "background": { "service_worker": "background.js", "type": "module" },
   "permissions": ["storage", "unlimitedStorage"],
-  "host_permissions": ["https://x.com/*"],
+  "host_permissions": ["https://x.com/*", "https://www.threads.com/*", "https://*.cdninstagram.com/*", "https://*.fbcdn.net/*"],
   "content_scripts": [
     {
       "matches": ["https://x.com/*"],
@@ -15,7 +15,13 @@
       "world": "MAIN"
     },
     {
-      "matches": ["https://x.com/*"],
+      "matches": ["https://www.threads.com/*"],
+      "js": ["threads-capture.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://x.com/*", "https://www.threads.com/*"],
       "js": ["bridge.js"],
       "run_at": "document_start"
     }

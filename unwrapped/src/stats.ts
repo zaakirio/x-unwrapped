@@ -15,8 +15,16 @@ export interface Tweet {
 }
 
 export type Kind = 'likes' | 'bookmarks' | 'posts';
+export type Platform = 'x' | 'threads';
+
+export const PLATFORMS: Record<Platform, { name: string; saves: string; save: string }> = {
+  x: { name: 'X', saves: 'bookmarks', save: 'bookmark' },
+  threads: { name: 'Threads', saves: 'saves', save: 'save' },
+};
 
 export interface ExportFile {
+  // Missing on files from before Threads support, which are all X.
+  platform?: Platform;
   kind: Kind;
   exported_at: string;
   account: string | null;
@@ -36,6 +44,7 @@ export interface Account {
 
 export interface Summary {
   v: 1;
+  p: Platform;
   handle: string;
   avatar: string | null;
   from: string;
@@ -85,7 +94,7 @@ export const TOPICS: [string, RegExp][] = [
 export function parseExport(text: string): ExportFile {
   const data = JSON.parse(text);
   if (!data || !Array.isArray(data.tweets) || !['likes', 'bookmarks', 'posts'].includes(data.kind)) {
-    throw new Error('This is not an X Unwrapped likes, bookmarks or posts JSON file.');
+    throw new Error('This is not an Unwrapped likes, bookmarks or posts JSON file.');
   }
   return data as ExportFile;
 }
@@ -153,6 +162,8 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
   const savesFile = files.find((f) => f.kind === 'bookmarks');
   const postsFile = files.find((f) => f.kind === 'posts');
   if (!likesFile && !savesFile && !postsFile) throw new Error('Add a likes, bookmarks or posts export.');
+  const platform = files[0].platform === 'threads' ? 'threads' : 'x';
+  if (files.some((f) => (f.platform === 'threads' ? 'threads' : 'x') !== platform)) throw new Error('Pick files from X or from Threads, not both.');
   const handle = files.find((f) => f.account)?.account || 'you';
 
   const to = Math.max(...files.map((f) => Date.parse(f.exported_at)));
@@ -258,6 +269,7 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
 
   return {
     v: 1,
+    p: platform,
     handle,
     avatar: bigAvatar(files.find((f) => f.avatar)?.avatar || avatars.get(handle.toLowerCase())),
     from: new Date(from).toISOString().slice(0, 10),

@@ -5,7 +5,7 @@ import { decodeSummary, encodeSummary } from './link';
 import { Ribbon } from './ribbon';
 import { download } from './share';
 import { esc, fmt, yearOf } from './slides';
-import { PERSONAS, parseExport, summarize, type ExportFile, type Kind, type Summary } from './stats';
+import { PERSONAS, PLATFORMS, parseExport, summarize, type ExportFile, type Kind, type Platform, type Summary } from './stats';
 import { playStory } from './story';
 import { SITE_URL } from './site';
 
@@ -40,6 +40,7 @@ function backdrop(canvas: HTMLCanvasElement) {
 
 interface Job {
   status: 'running' | 'done' | 'error';
+  platform: Platform;
   kind: Kind | null;
   counts: Partial<Record<Kind, number>>;
   message: string;
@@ -53,27 +54,27 @@ async function storedExports(): Promise<ExportFile[]> {
 function landing(shared: Summary | null, token: string | null) {
   const year = shared ? yearOf(shared) : String(new Date().getFullYear());
   const cards = shared
-    ? [`${fmt(shared.likes)} likes`, `${fmt(shared.bookmarks)} saves`, PERSONAS[shared.persona.id].name]
+    ? [`${fmt(shared.likes)} likes`, `${fmt(shared.bookmarks)} ${PLATFORMS[shared.p].saves}`, PERSONAS[shared.persona.id].name]
     : ['Top accounts', 'The Vault', 'Your persona'];
   const fileButton = (label: string, cls: string) => `
     <label class="${cls} file-btn">${label}<input type="file" accept=".json,.zip,application/json,application/zip" multiple hidden></label>`;
   const cta = shared
     ? `<button class="primary" data-action="play">Play their Unwrapped</button>${fileButton('Make your own', 'secondary')}`
     : ext
-      ? `<button class="primary" data-action="collect">Make my Unwrapped</button>${fileButton('Upload an export', 'secondary')}`
+      ? `<button class="primary" data-action="collect" data-platform="x">Unwrap my X</button><button class="secondary" data-action="collect" data-platform="threads">Unwrap my Threads</button>${fileButton('Upload an export', 'secondary')}`
       : fileButton('Make your Unwrapped', 'primary');
   const privacy = shared
     ? 'This link holds only summary stats. No posts, no logins.'
     : ext
-      ? 'Opens X in a new tab and reads your likes, bookmarks and posts from the last 12 months, right in your browser. Or upload your X data archive (.zip).'
+      ? 'Opens X or Threads in a new tab and reads your likes, saves and posts from the last 12 months, right in your browser. Or upload your X data archive (.zip).'
       : `Your data never leaves your browser. Drop your <a href="https://x.com/settings/download_your_data" target="_blank" rel="noopener">X data archive</a> (.zip) or the JSON files from the <a href="${EXPORTER}">exporter</a> anywhere on this page.`;
   app.innerHTML = `
     <main class="landing">
       <canvas class="backdrop"></canvas>
       <div class="hero">
         <p class="handle">${shared ? `@${esc(shared.handle)}` : 'X Unwrapped'}</p>
-        <h1 class="display">Your X<br>Unwrapped<br>${esc(year)}</h1>
-        <p class="range glass">${shared ? rangeLabel(shared) : 'Your last 12 months on X'}</p>
+        <h1 class="display">Your ${shared ? PLATFORMS[shared.p].name : ext ? 'year' : 'X'}<br>Unwrapped<br>${esc(year)}</h1>
+        <p class="range glass">${shared ? rangeLabel(shared) : ext ? 'Your last 12 months on X or Threads' : 'Your last 12 months on X'}</p>
         <div class="cta">${cta}</div>
         <div class="saved"></div>
         <p class="privacy">${privacy}</p>
@@ -92,18 +93,24 @@ function landing(shared: Summary | null, token: string | null) {
 // Extension: start a collection, follow its progress, and offer the last result.
 async function extensionControls() {
   const saved = app.querySelector<HTMLElement>('.saved')!;
-  const collect = app.querySelector<HTMLButtonElement>('[data-action=collect]')!;
-  collect.addEventListener('click', () => ext!.runtime.sendMessage({ type: 'start' }));
+  const collect = [...app.querySelectorAll<HTMLButtonElement>('[data-action=collect]')];
+  collect.forEach((b) => b.addEventListener('click', () => ext!.runtime.sendMessage({ type: 'start', platform: b.dataset.platform })));
 
   const show = async (job: Job | undefined) => {
     if (!app.contains(saved)) return;
     const files = await storedExports();
-    collect.disabled = job?.status === 'running';
-    collect.textContent = job?.status === 'running' ? 'Collecting on X...' : files.length ? 'Collect again' : 'Make my Unwrapped';
-    const progress = job?.status === 'running'
-      ? `<p class="progress-line">${KINDS.map((k) => `${k[0].toUpperCase()}${k.slice(1)}: ${job.counts[k] != null ? fmt(job.counts[k]!) : k === job.kind ? '...' : '-'}`).join(' · ')}</p>`
+    const running = job?.status === 'running';
+    collect.forEach((b) => {
+      b.disabled = running;
+      b.textContent = running && b.dataset.platform === job!.platform
+        ? `Collecting on ${PLATFORMS[job!.platform].name}...`
+        : `Unwrap my ${PLATFORMS[b.dataset.platform as Platform].name}`;
+    });
+    const label = (k: Kind) => (k === 'bookmarks' ? PLATFORMS[job!.platform].saves : `${k}`).replace(/^./, (c) => c.toUpperCase());
+    const progress = running
+      ? `<p class="progress-line">${KINDS.map((k) => `${label(k)}: ${job!.counts[k] != null ? fmt(job!.counts[k]!) : k === job!.kind ? '...' : '-'}`).join(' · ')}</p>`
       : '';
-    const ready = job?.status !== 'running' && files.length
+    const ready = !running && files.length
       ? `<div class="cta"><button class="primary" data-action="play-saved">Play my Unwrapped</button><button class="secondary" data-action="export">Download JSON</button></div>`
       : '';
     saved.innerHTML = progress + ready;
@@ -111,7 +118,7 @@ async function extensionControls() {
     saved.querySelector('[data-action=play-saved]')?.addEventListener('click', () => start(files));
     saved.querySelector('[data-action=export]')?.addEventListener('click', () => {
       const day = new Date().toISOString().slice(0, 10);
-      files.forEach((f) => download(new Blob([JSON.stringify(f, null, 2)], { type: 'application/json' }), `x-${f.kind}-${f.account}-${day}.json`));
+      files.forEach((f) => download(new Blob([JSON.stringify(f, null, 2)], { type: 'application/json' }), `${f.platform || 'x'}-${f.kind}-${f.account}-${day}.json`));
     });
     return files;
   };
@@ -145,7 +152,27 @@ async function start(exports: ExportFile[]) {
   const summary = summarize(exports);
   const token = await encodeSummary(summary);
   if (!ext) history.replaceState(null, '', `#u=${token}`);
-  play(summary, token);
+  play(summary.p === 'threads' && ext ? await inlineAvatars(summary) : summary, token);
+}
+
+// Threads serves profile pictures only to threads.com pages. The extension may fetch them
+// (it has host access), so it turns them into data URLs; elsewhere the gradient orbs show instead.
+async function inlineAvatars(s: Summary): Promise<Summary> {
+  const inline = async (url: string | null) => {
+    if (!url) return null;
+    try {
+      const blob = await (await fetch(url)).blob();
+      return await new Promise<string>((ok) => {
+        const r = new FileReader();
+        r.onload = () => ok(r.result as string);
+        r.readAsDataURL(blob);
+      });
+    } catch {
+      return null;
+    }
+  };
+  const [avatar, ...top] = await Promise.all([inline(s.avatar), ...s.top.map((a) => inline(a.a))]);
+  return { ...s, avatar, top: s.top.map((a, i) => ({ ...a, a: top[i] })) };
 }
 
 async function build(files: File[]) {

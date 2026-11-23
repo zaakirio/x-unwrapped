@@ -5,4 +5,4 @@ const inExtension = location.protocol === 'chrome-extension:';
 export const SITE_URL: string | null =
   import.meta.env.VITE_SITE_URL || (inExtension ? null : `${location.origin}${location.pathname}`);
 
-export const SITE_HOST = SITE_URL ? new URL(SITE_URL).host : 'X Unwrapped';
+export const SITE_HOST = SITE_URL ? new URL(SITE_URL).host : null;

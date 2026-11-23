@@ -17,6 +17,8 @@ function fromBase64Url(s: string) {
 }
 
 export async function encodeSummary(s: Summary) {
+  // Threads picture URLs are long, signed and expire within days, so links carry only X's.
+  s = { ...s, avatar: avatar(s.avatar), top: s.top.map((a) => ({ ...a, a: avatar(a.a) })) };
   return toBase64Url(await pipe(new TextEncoder().encode(JSON.stringify(s)), new CompressionStream('deflate-raw')));
 }
 
@@ -24,6 +26,9 @@ export async function decodeSummary(token: string): Promise<Summary> {
   const json = new TextDecoder().decode(await pipe(fromBase64Url(token), new DecompressionStream('deflate-raw')));
   return clean(JSON.parse(json));
 }
+
+// Only X's own image CDN, so a crafted link cannot point viewers at another host.
+const avatar = (v: unknown) => (typeof v === 'string' && /^https:\/\/pbs\.twimg\.com\/profile_images\/[\w/.-]+$/.test(v) ? v : null);
 
 // Anyone can craft a link, so rebuild the summary with strict types before any of it reaches the page.
 function clean(s: any): Summary {
@@ -34,8 +39,6 @@ function clean(s: any): Summary {
     return n;
   };
   const str = (v: unknown, max = 80) => String(v ?? '').slice(0, max);
-  // Only X's own image CDN, so a crafted link cannot point viewers at another host.
-  const avatar = (v: unknown) => (typeof v === 'string' && /^https:\/\/pbs\.twimg\.com\/profile_images\/[\w/.-]+$/.test(v) ? v : null);
   const date = (v: unknown) => {
     const d = str(v);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error('Bad date in link.');
@@ -46,6 +49,7 @@ function clean(s: any): Summary {
   if (!(s.persona?.id in PERSONAS)) throw new Error('Bad persona in link.');
   return {
     v: 1,
+    p: s.p === 'threads' ? 'threads' : 'x',
     handle: str(s.handle),
     avatar: avatar(s.avatar),
     from: date(s.from),
