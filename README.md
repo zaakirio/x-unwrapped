@@ -46,3 +46,24 @@ node --test test/parse.test.cjs
 ```
 
 The fixtures are trimmed copies of real `Likes` responses.
+
+## X Unwrapped
+
+`unwrapped/` is a web app that turns the exports into a year-in-review story and a share card.
+Everything runs in the browser; the files are never uploaded.
+
+```sh
+cd unwrapped && npm install && npm run dev
+```
+
+Drop the likes and bookmarks JSON files on the page.
+The story covers the 12 months before the export date.
+X does not record when you liked or saved a post, only the order, so each action is dated by the newest post below it in the list.
+The clock slide shows when the posts you liked went live, not when you were online.
+
+The share link puts the summary stats (counts, top accounts, topics, persona) in the URL fragment, which browsers do not send to the server.
+No posts or files go in the link.
+The last slide copies the link and saves a PNG card or an animated GIF.
+
+`npm run build` writes a static site to `unwrapped/dist`, with the userscript copied next to it.
+`npm test` runs the stats and link tests.
