@@ -1,5 +1,5 @@
 import type { Pose } from './ribbon';
-import { PERSONAS, TRAITS, type Summary } from './stats';
+import { PERSONAS, TRAITS, type Account, type Summary } from './stats';
 
 export interface Slide {
   id: string;
@@ -37,7 +37,7 @@ export function feedMood(h: number) {
   return ['✦', 'After Hours'];
 }
 
-// Stable gradient orb per handle, standing in for avatars we do not have.
+// Stable gradient orb per handle, shown under the profile picture and in its place when there is none.
 export function orb(handle: string) {
   let h = 0;
   for (const c of handle) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -62,12 +62,21 @@ function monthName(key: string) {
   return MONTHS[Number(key.slice(5, 7)) - 1];
 }
 
-const anim = (i: number) => `class="in" style="--d:${(0.15 + i * 0.12).toFixed(2)}s"`;
+export function avatar(handle: string, url: string | null, cls = '') {
+  const img = url ? `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer" loading="lazy">` : '';
+  return `<div class="orb ${cls}" style="${orb(handle)}">${img}</div>`;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
+
+// Entrance animation hook; an attribute, not a class, so it can sit next to an element's own class.
+const anim = (i: number) => `data-in style="--d:${(0.15 + i * 0.12).toFixed(2)}s"`;
 
 export function buildSlides(s: Summary, shareCard: string): Slide[] {
   const year = yearOf(s);
   const [first, ...rest] = s.top;
   const [moodIcon, mood] = feedMood(s.peakHour);
+  const mine = s.clockOf === 'you';
   const persona = PERSONAS[s.persona.id];
 
   const intro: Slide = {
@@ -76,8 +85,13 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     html: `
       <h1 class="display xl" ${anim(0)}>Your X<br>Unwrapped<br>${esc(year)}</h1>
       <div class="spacer"></div>
-      <div class="glass stat-line" ${anim(3)}>12 months. ${count(s.likes)} likes.<br>${count(s.bookmarks)} bookmarks. ${count(s.accounts)} accounts.</div>
-      <p class="handle" ${anim(4)}>@${esc(s.handle)}</p>`,
+      <div class="glass stat-line" ${anim(3)}>12 months. ${[
+        s.likes && plural(s.likes, 'like'),
+        s.bookmarks && plural(s.bookmarks, 'bookmark'),
+        s.posts?.count && plural(s.posts.count, 'post'),
+        !s.posts?.count && s.accounts && plural(s.accounts, 'account'),
+      ].filter(Boolean).join('. ')}.</div>
+      <div class="handle me" ${anim(4)}>${avatar(s.handle, s.avatar)}@${esc(s.handle)}</div>`,
   };
 
   const top: Slide = {
@@ -87,23 +101,23 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
       <h2 class="display l" ${anim(0)}>Your top 5<br>accounts.</h2>
       ${first ? `
       <div class="glass hero-account" ${anim(1)}>
-        <div class="orb big" style="${orb(first.h)}"></div>
+        ${avatar(first.h, first.a, 'big')}
         <div class="hero-meta">
           <p class="rank">#1 @${esc(first.h)}</p>
           <p class="name">${esc(first.n)}</p>
-          <p class="mega">${count(first.likes + first.saves)}</p>
-          <p class="sub">${fmt(first.likes)} likes · ${fmt(first.saves)} saves</p>
+          <p class="mega">${count(score(first))}</p>
+          <p class="sub">${breakdown(first)}</p>
         </div>
       </div>` : ''}
       <ol class="accounts">
         ${rest.map((a, i) => `
         <li class="glass" ${anim(i + 2)}>
-          <div class="orb" style="${orb(a.h)}"></div>
+          ${avatar(a.h, a.a)}
           <span class="who">#${i + 2} @${esc(a.h)}</span>
-          <span class="num">${fmt(a.likes + a.saves)}</span>
+          <span class="num">${fmt(score(a))}</span>
         </li>`).join('')}
       </ol>
-      <p class="foot" ${anim(7)}>Ranked by likes + bookmarks from ${fmt(s.accounts)} accounts.</p>`,
+      <p class="foot" ${anim(7)}>Ranked by your likes, bookmarks and replies across ${fmt(s.accounts)} accounts.</p>`,
   };
 
   const cells = [...s.clock].map((v, i) => {
@@ -114,15 +128,15 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     id: 'clock',
     pose: [0.15, 0.08, 0.6, 1.05],
     html: `
-      <h2 class="display l" ${anim(0)}>The posts you<br>love drop at<br><span class="grad">${hourLabel(s.peakHour)}</span></h2>
+      <h2 class="display l" ${anim(0)}>${mine ? 'You live<br>on X at' : 'The posts you<br>love drop at'}<br><span class="grad">${hourLabel(s.peakHour)}</span></h2>
       <div class="spacer"></div>
       <div class="glass heatmap" ${anim(2)}>
         <div class="days">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span>${d}</span>`).join('')}</div>
         <div class="grid">${cells.join('')}</div>
         <div class="hours"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
       </div>
-      <div class="pill" ${anim(4)}><span class="pill-icon">${moodIcon}</span>Your feed: ${mood}</div>
-      <p class="foot" ${anim(5)}>When the posts you liked and saved went live.</p>`,
+      <div class="pill" ${anim(4)}><span class="pill-icon">${moodIcon}</span>${mine ? '' : 'Your feed: '}${mood}</div>
+      <p class="foot" ${anim(5)}>${mine ? 'When you posted and replied.' : 'When the posts you liked and saved went live.'}</p>`,
   };
 
   const maxP = Math.max(1, ...s.topics.map((t) => t.p));
@@ -138,7 +152,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
           <span class="t">${esc(t.k)}</span><span class="p">${Number(t.p)}%</span>
         </div>`).join('')}
       </div>
-      <p class="foot" ${anim(6)}>Share of topic mentions across everything you liked and saved.</p>`,
+      <p class="foot" ${anim(6)}>Share of topic mentions across everything you ${s.posts ? 'liked, saved and posted' : 'liked and saved'}.</p>`,
   };
 
   const v = s.vault;
@@ -151,13 +165,13 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
       <div class="stack">
         <div class="glass card c0"><span class="big">${100 - v.onlySaved}%</span>of your saves got a like first.</div>
         <div class="glass card c1"><span class="big">${v.video}%</span>of the vault is video.</div>
-        <div class="glass card c2"><span class="big">${fmt(v.gems)}</span>hidden gems with under 1K likes.</div>
+        ${s.taste ? `<div class="glass card c2"><span class="big">${fmt(v.gems)}</span>hidden gems with under 1K likes.</div>` : ''}
         ${v.oldest ? `<div class="glass card c3"><span class="big">${esc(v.oldest.y)}</span>Oldest save: a post by @${esc(v.oldest.h)}.</div>` : ''}
       </div>`,
   };
 
   const t = s.taste;
-  const taste: Slide = {
+  const taste: Slide | null = t && {
     id: 'taste',
     pose: [0.3, -0.25, 1.1, 1.1],
     html: `
@@ -181,7 +195,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     html: `
       <h2 class="display l" ${anim(0)}>Your year<br>in a wave.</h2>
       ${waveChart(s)}
-      <div class="legend" ${anim(4)}><span class="k likes">Likes</span><span class="k saves">Bookmarks</span></div>
+      <div class="legend" ${anim(4)}><span class="k likes">Likes</span><span class="k saves">Bookmarks</span>${s.posts ? '<span class="k posts">Posts</span>' : ''}</div>
       <p class="foot" ${anim(5)}>X does not log when you liked a post, so each like is dated by its place in your list.</p>`,
   };
 
@@ -217,13 +231,55 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
       </div>`,
   };
 
-  return [intro, top, clock, topics, vault, taste, wave, personaSlide, outro];
+  const p = s.posts;
+  const postsSlide: Slide | null = p && p.count ? {
+    id: 'posts',
+    pose: [-0.2, 0.32, -0.9, 1.05],
+    html: `
+      <h2 class="display l" ${anim(0)}>You posted<br><span class="grad">${count(p.count)}</span> times.</h2>
+      ${p.best ? `
+      <p class="kicker" ${anim(1)}>Your biggest post</p>
+      <div class="glass tweet" ${anim(2)}>
+        <div class="tweet-head">${avatar(s.handle, s.avatar)}<span>@${esc(s.handle)}</span></div>
+        <p class="tweet-text">${esc(p.best.text)}</p>
+        <p class="tweet-meta"><b>${compact(p.best.likes)}</b> likes${p.best.views ? ` · <b>${compact(p.best.views)}</b> views` : ''}</p>
+      </div>` : ''}
+      <div class="tiles">
+        <div class="glass tile" ${anim(3)}><b>${count(p.count - p.replies)}</b><span>new posts</span></div>
+        <div class="glass tile" ${anim(4)}><b>${count(p.replies)}</b><span>replies</span></div>
+        ${p.retweets ? `<div class="glass tile" ${anim(5)}><b>${count(p.retweets)}</b><span>reposts</span></div>` : ''}
+      </div>`,
+  } : null;
+
+  return [
+    intro,
+    s.top.length ? top : null,
+    postsSlide,
+    clock,
+    s.topics.length ? topics : null,
+    s.bookmarks ? vault : null,
+    taste,
+    wave,
+    personaSlide,
+    outro,
+  ].filter((x): x is Slide => !!x);
+}
+
+const score = (a: Account) => a.likes + a.saves + a.replies;
+
+function breakdown(a: Account) {
+  return [
+    a.likes && `${fmt(a.likes)} likes`,
+    a.saves && `${fmt(a.saves)} saves`,
+    a.replies && `${fmt(a.replies)} replies`,
+  ].filter(Boolean).join(' · ');
 }
 
 function waveChart(s: Summary) {
   const W = 320, H = 200, P = 8;
   const rows = s.months;
-  const max = Math.max(1, ...rows.map((r) => r.l + r.b));
+  const sum = (r: Summary['months'][number]) => r.l + r.b + r.p;
+  const max = Math.max(1, ...rows.map(sum));
   const x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, rows.length - 1);
   const y = (v: number) => H - 24 - (v / max) * (H - 60);
   const smooth = (pts: [number, number][]) =>
@@ -233,11 +289,12 @@ function waveChart(s: Summary) {
       const mx = (qx + px) / 2;
       return `${d} C${mx},${qy} ${mx},${py} ${px},${py}`;
     }, '');
-  const total = rows.map((r, i) => [x(i), y(r.l + r.b)] as [number, number]);
+  const total = rows.map((r, i) => [x(i), y(sum(r))] as [number, number]);
+  const posts = rows.map((r, i) => [x(i), y(r.p)] as [number, number]);
   const saves = rows.map((r, i) => [x(i), y(r.b)] as [number, number]);
   const base = H - 24;
   const area = (pts: [number, number][]) => `${smooth(pts)} L${x(rows.length - 1)},${base} L${x(0)},${base} Z`;
-  const peakI = rows.reduce((b, r, i) => (r.l + r.b > rows[b].l + rows[b].b ? i : b), 0);
+  const peakI = rows.reduce((b, r, i) => (sum(r) > sum(rows[b]) ? i : b), 0);
   const peak = rows[peakI];
   const [px, py] = total[peakI];
   const ticks = [0, Math.round(max / 2), max];
@@ -252,8 +309,9 @@ function waveChart(s: Summary) {
       <path class="area" d="${area(total)}" fill="url(#wg)" mask="url(#wm)"/>
       <path class="area saves" d="${area(saves)}" fill="url(#wg)" opacity=".55"/>
       <path class="line" d="${smooth(total)}" stroke="url(#wg)" pathLength="1"/>
+      ${s.posts ? `<path class="line posts" d="${smooth(posts)}" pathLength="1"/>` : ''}
       ${rows.map((r, i) => `<text class="month" x="${x(i)}" y="${H - 6}" text-anchor="middle">${monthName(r.m)[0]}</text>`).join('')}
       <g class="peak"><circle cx="${px}" cy="${py}" r="4"/><circle cx="${px}" cy="${py}" r="9" class="halo"/></g>
     </svg>
-    <div class="glass callout" ${anim(3)}><b>Peak: ${monthName(peak.m)} ${peak.m.slice(0, 4)}</b><span>${fmt(peak.l)} likes · ${fmt(peak.b)} saves</span></div>`;
+    <div class="glass callout" ${anim(3)}><b>Peak: ${monthName(peak.m)} ${peak.m.slice(0, 4)}</b><span>${[`${fmt(peak.l)} likes`, `${fmt(peak.b)} saves`, s.posts && `${fmt(peak.p)} posts`].filter(Boolean).join(' · ')}</span></div>`;
 }

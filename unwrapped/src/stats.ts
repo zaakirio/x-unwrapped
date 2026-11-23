@@ -3,45 +3,65 @@
 export interface Tweet {
   id: string;
   created_at?: string;
-  author?: { screen_name: string; name: string };
+  author?: { id?: string | null; screen_name: string; name: string; avatar?: string | null };
   text?: string;
   lang?: string;
-  reply_to?: unknown;
-  metrics?: { likes?: number; views?: number };
+  reply_to?: { screen_name?: string | null } | null;
+  metrics?: { likes?: number | null; views?: number | null };
   media?: { type: string }[];
+  retweet_of?: unknown;
+  quoted?: Tweet | null;
   unavailable?: boolean;
 }
 
+export type Kind = 'likes' | 'bookmarks' | 'posts';
+
 export interface ExportFile {
-  kind: 'likes' | 'bookmarks';
+  kind: Kind;
   exported_at: string;
   account: string | null;
+  // Archive uploads carry the profile picture separately, since posts there have no author block.
+  avatar?: string | null;
   tweets: Tweet[];
+}
+
+export interface Account {
+  h: string;
+  n: string;
+  a: string | null;
+  likes: number;
+  saves: number;
+  replies: number;
 }
 
 export interface Summary {
   v: 1;
   handle: string;
+  avatar: string | null;
   from: string;
   to: string;
   likes: number;
   bookmarks: number;
   both: number;
   accounts: number;
-  top: { h: string; n: string; likes: number; saves: number }[];
+  top: Account[];
   // 7 days (Mon first) x 24 hours, each 0-9, in the creator's time zone.
   clock: string;
+  // 'you' when the clock comes from your own posts, 'feed' when from the posts you liked and saved.
+  clockOf: 'you' | 'feed';
   peakHour: number;
   topics: { k: string; p: number }[];
   vault: { onlySaved: number; video: number; gems: number; oldest: { h: string; y: number } | null };
-  months: { m: string; l: number; b: number }[];
-  taste: { median: number; niche: number; biggest: { h: string; views: number } | null };
+  months: { m: string; l: number; b: number; p: number }[];
+  // Null when the source has no like counts (the X archive).
+  taste: { median: number; niche: number; biggest: { h: string; views: number } | null } | null;
+  posts: { count: number; replies: number; retweets: number; best: { text: string; likes: number; views: number } | null } | null;
   media: { video: number; photo: number; text: number };
   langs: number;
   persona: { id: PersonaId; traits: [number, number, number] };
 }
 
-export type PersonaId = 'curator' | 'builder' | 'visualist' | 'scout' | 'wanderer';
+export type PersonaId = 'curator' | 'builder' | 'visualist' | 'scout' | 'broadcaster' | 'wanderer';
 
 const DAY_MS = 86_400_000;
 const NICHE_LIKES = 1000;
@@ -64,8 +84,8 @@ export const TOPICS: [string, RegExp][] = [
 
 export function parseExport(text: string): ExportFile {
   const data = JSON.parse(text);
-  if (!data || !Array.isArray(data.tweets) || (data.kind !== 'likes' && data.kind !== 'bookmarks')) {
-    throw new Error('This is not an x-export likes or bookmarks JSON file.');
+  if (!data || !Array.isArray(data.tweets) || !['likes', 'bookmarks', 'posts'].includes(data.kind)) {
+    throw new Error('This is not an X Unwrapped likes, bookmarks or posts JSON file.');
   }
   return data as ExportFile;
 }
@@ -86,7 +106,7 @@ export function actionTimes(tweets: Tweet[]): number[] {
 
 function inWindow(file: ExportFile, from: number): Tweet[] {
   const times = actionTimes(file.tweets);
-  return file.tweets.filter((t, i) => !t.unavailable && t.author && times[i] >= from);
+  return file.tweets.filter((t, i) => !t.unavailable && times[i] >= from);
 }
 
 function monthKey(ms: number) {
@@ -123,10 +143,17 @@ export function topicShares(tweets: Tweet[]) {
   return { top: all.slice(0, 5), tagged, range: Math.round((entropy / Math.log(TOPICS.length)) * 100) };
 }
 
+const sameHandle = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+// Profile pictures come small; ask X's CDN for the 400px version.
+export const bigAvatar = (url?: string | null) => (url ? url.replace(/_normal(\.\w+)$/, '_400x400$1') : null);
+
 export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone): Summary {
   const likesFile = files.find((f) => f.kind === 'likes');
   const savesFile = files.find((f) => f.kind === 'bookmarks');
-  if (!likesFile && !savesFile) throw new Error('Add a likes or bookmarks export.');
+  const postsFile = files.find((f) => f.kind === 'posts');
+  if (!likesFile && !savesFile && !postsFile) throw new Error('Add a likes, bookmarks or posts export.');
+  const handle = files.find((f) => f.account)?.account || 'you';
 
   const to = Math.max(...files.map((f) => Date.parse(f.exported_at)));
   const from = to - 365 * DAY_MS;
@@ -136,25 +163,46 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
   const likedIds = new Set(likes.map((t) => t.id));
   const both = saves.filter((t) => likedIds.has(t.id)).length;
 
-  const byAuthor = new Map<string, { h: string; n: string; likes: number; saves: number }>();
-  const tally = (t: Tweet, key: 'likes' | 'saves') => {
-    const h = t.author!.screen_name;
-    const row = byAuthor.get(h) || { h, n: t.author!.name, likes: 0, saves: 0 };
-    row[key]++;
-    byAuthor.set(h, row);
-  };
-  likes.forEach((t) => tally(t, 'likes'));
-  saves.forEach((t) => tally(t, 'saves'));
-  const top = [...byAuthor.values()]
-    .sort((a, b) => b.likes + b.saves - (a.likes + a.saves) || b.likes - a.likes)
-    .slice(0, 5);
+  // The Replies tab also returns the posts you replied to, so keep only your own.
+  const mine = (postsFile?.tweets || []).filter(
+    (t) => !t.unavailable && sameHandle(t.author?.screen_name, handle) && t.created_at && Date.parse(t.created_at) >= from,
+  );
+  const own = mine.filter((t) => !t.retweet_of);
+  const replies = own.filter((t) => t.reply_to && !sameHandle(t.reply_to.screen_name, handle));
 
-  // When the posts you engaged with were published, in the creator's local time.
+  const avatars = new Map<string, string>();
+  const seen = (t?: Tweet | null) => {
+    const a = t?.author;
+    if (a?.screen_name && a.avatar) avatars.set(a.screen_name.toLowerCase(), a.avatar);
+    if (t?.quoted) seen(t.quoted);
+  };
+  files.forEach((f) => f.tweets.forEach(seen));
+
+  const byAuthor = new Map<string, Account>();
+  const tally = (h: string | null | undefined, n: string | null | undefined, key: 'likes' | 'saves' | 'replies') => {
+    if (!h) return;
+    const k = h.toLowerCase();
+    const row = byAuthor.get(k) || { h, n: n || h, a: null, likes: 0, saves: 0, replies: 0 };
+    row[key]++;
+    byAuthor.set(k, row);
+  };
+  likes.forEach((t) => tally(t.author?.screen_name, t.author?.name, 'likes'));
+  saves.forEach((t) => tally(t.author?.screen_name, t.author?.name, 'saves'));
+  replies.forEach((t) => tally(t.reply_to!.screen_name, null, 'replies'));
+  byAuthor.delete(handle.toLowerCase());
+  const score = (a: Account) => a.likes + a.saves + a.replies;
+  const top = [...byAuthor.values()]
+    .sort((a, b) => score(b) - score(a) || b.likes - a.likes)
+    .slice(0, 5)
+    .map((a) => ({ ...a, a: bigAvatar(avatars.get(a.h.toLowerCase())) }));
+
+  // Your own posting times when there are enough of them, else when the posts you liked and saved went live.
+  const clockOf = own.length >= 20 ? 'you' : 'feed';
   const dayHour = new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const grid = new Array(168).fill(0);
   const hours = new Array(24).fill(0);
-  for (const t of all) {
+  for (const t of clockOf === 'you' ? own : all) {
     if (!t.created_at) continue;
     const parts = dayHour.formatToParts(new Date(t.created_at));
     const d = DAYS.indexOf(parts.find((p) => p.type === 'weekday')!.value);
@@ -168,40 +216,50 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
 
   const months: Summary['months'] = [];
   for (let d = new Date(from); monthKey(d.getTime()) <= monthKey(to); d.setUTCMonth(d.getUTCMonth() + 1, 1)) {
-    months.push({ m: monthKey(d.getTime()), l: 0, b: 0 });
+    months.push({ m: monthKey(d.getTime()), l: 0, b: 0, p: 0 });
   }
+  const bucket = (ms: number) => months.find((r) => r.m === monthKey(ms));
   const bump = (file: ExportFile | undefined, key: 'l' | 'b') => {
     if (!file) return;
     const times = actionTimes(file.tweets);
     file.tweets.forEach((t, i) => {
-      if (t.unavailable || !t.author || times[i] < from) return;
-      const row = months.find((r) => r.m === monthKey(times[i]));
+      if (t.unavailable || times[i] < from) return;
+      const row = bucket(times[i]);
       if (row) row[key]++;
     });
   };
   bump(likesFile, 'l');
   bump(savesFile, 'b');
+  own.forEach((t) => {
+    const row = bucket(Date.parse(t.created_at!));
+    if (row) row.p++;
+  });
 
-  const oldestSave = saves.reduce<Tweet | null>((o, t) => (!o || t.created_at! < o.created_at! ? t : o), null);
+  const oldestSave = saves.reduce<Tweet | null>((o, t) => (t.author && (!o || t.created_at! < o.created_at!) ? t : o), null);
   const hasVideo = (t: Tweet) => (t.media || []).some((m) => m.type === 'video' || m.type === 'animated_gif');
   const hasPhoto = (t: Tweet) => (t.media || []).some((m) => m.type === 'photo');
 
-  const likeCounts = all.map((t) => t.metrics?.likes ?? 0);
-  const biggest = all.reduce<Tweet | null>((b, t) => ((t.metrics?.views ?? 0) > (b?.metrics?.views ?? 0) ? t : b), null);
-  const niche = pct(likeCounts.filter((c) => c < NICHE_LIKES).length, all.length);
+  const measured = all.filter((t) => t.metrics?.likes != null);
+  const likeCounts = measured.map((t) => t.metrics!.likes!);
+  const biggest = measured.reduce<Tweet | null>((b, t) => ((t.metrics?.views ?? 0) > (b?.metrics?.views ?? 0) ? t : b), null);
+  const niche = pct(likeCounts.filter((c) => c < NICHE_LIKES).length, measured.length);
 
   const video = all.filter(hasVideo).length;
   const photo = all.filter((t) => !hasVideo(t) && hasPhoto(t)).length;
 
-  const topics = topicShares(all);
+  const best = own.reduce<Tweet | null>((b, t) => ((t.metrics?.likes ?? 0) > (b?.metrics?.likes ?? -1) ? t : b), null);
+
+  const topics = topicShares([...all, ...own]);
   const saveRatio = likes.length ? saves.length / likes.length : saves.length ? 1 : 0;
   const builderShare = topics.top.filter((t) => t.k === 'AI' || t.k === 'Code').reduce((s, t) => s + t.p, 0) / 100;
   const mediaShare = (video + photo) / Math.max(1, all.length);
-  const persona = pickPersona({ saveRatio, builderShare, mediaShare, niche: niche / 100 });
+  const postRatio = own.length / Math.max(1, likes.length + saves.length);
+  const persona = pickPersona({ saveRatio, builderShare, mediaShare, niche: niche / 100, postRatio });
 
   return {
     v: 1,
-    handle: likesFile?.account || savesFile?.account || 'you',
+    handle,
+    avatar: bigAvatar(files.find((f) => f.avatar)?.avatar || avatars.get(handle.toLowerCase())),
     from: new Date(from).toISOString().slice(0, 10),
     to: new Date(to).toISOString().slice(0, 10),
     likes: likes.length,
@@ -210,22 +268,35 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
     accounts: byAuthor.size,
     top,
     clock,
+    clockOf,
     peakHour,
     topics: topics.top,
     vault: {
       onlySaved: pct(saves.length - both, saves.length),
       video: pct(saves.filter(hasVideo).length, saves.length),
-      gems: saves.filter((t) => (t.metrics?.likes ?? 0) < NICHE_LIKES).length,
+      gems: saves.filter((t) => t.metrics?.likes != null && t.metrics.likes < NICHE_LIKES).length,
       oldest: oldestSave ? { h: oldestSave.author!.screen_name, y: new Date(oldestSave.created_at!).getUTCFullYear() } : null,
     },
     months,
-    taste: {
-      median: median(likeCounts),
-      niche,
-      biggest: biggest?.metrics?.views ? { h: biggest.author!.screen_name, views: biggest.metrics.views } : null,
-    },
+    taste: measured.length
+      ? {
+          median: median(likeCounts),
+          niche,
+          biggest: biggest?.metrics?.views ? { h: biggest.author!.screen_name, views: biggest.metrics.views } : null,
+        }
+      : null,
+    posts: postsFile
+      ? {
+          count: own.length,
+          replies: replies.length,
+          retweets: mine.length - own.length,
+          best: best?.text
+            ? { text: best.text.slice(0, 160), likes: best.metrics?.likes ?? 0, views: best.metrics?.views ?? 0 }
+            : null,
+        }
+      : null,
     media: { video: pct(video, all.length), photo: pct(photo, all.length), text: pct(all.length - video - photo, all.length) },
-    langs: new Set(all.map((t) => t.lang).filter((l) => l && !NON_LANGS.has(l))).size,
+    langs: new Set([...all, ...own].map((t) => t.lang).filter((l) => l && !NON_LANGS.has(l))).size,
     persona: {
       id: persona,
       traits: [topics.range, Math.min(100, niche * 2), Math.min(100, Math.round(saveRatio * 100))],
@@ -234,8 +305,9 @@ export function summarize(files: ExportFile[], timeZone = Intl.DateTimeFormat().
 }
 
 // Each signal is scaled so 1 means "clearly this type"; the strongest one wins.
-export function pickPersona(s: { saveRatio: number; builderShare: number; mediaShare: number; niche: number }): PersonaId {
+export function pickPersona(s: { saveRatio: number; builderShare: number; mediaShare: number; niche: number; postRatio: number }): PersonaId {
   const scores: [PersonaId, number][] = [
+    ['broadcaster', s.postRatio / 0.4],
     ['curator', s.saveRatio / 0.5],
     ['builder', s.builderShare / 0.45],
     ['visualist', s.mediaShare / 0.75],
@@ -252,5 +324,6 @@ export const PERSONAS: Record<PersonaId, { name: string; line: string }> = {
   builder: { name: 'The Builder', line: 'You scroll like you ship: fast, and for parts.' },
   visualist: { name: 'The Visualist', line: 'You read with your eyes. Mostly the pictures.' },
   scout: { name: 'The Scout', line: 'You liked it before it had likes.' },
+  broadcaster: { name: 'The Broadcaster', line: 'You came to talk, not to scroll.' },
   wanderer: { name: 'The Wanderer', line: 'No algorithm can pin you down.' },
 };

@@ -5,7 +5,7 @@ import type { Summary } from './stats';
 
 const SLIDE_MS = 7000;
 
-export function playStory(root: HTMLElement, s: Summary, shareUrl: string, onExit: () => void) {
+export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null, onExit: () => void) {
   const slides = buildSlides(s, '<canvas class="card-canvas" width="540" height="540"></canvas>');
   root.innerHTML = `
     <div class="stage">
@@ -18,6 +18,8 @@ export function playStory(root: HTMLElement, s: Summary, shareUrl: string, onExi
     </div>`;
 
   const frame = root.querySelector<HTMLElement>('.frame')!;
+  // A missing profile picture falls back to its gradient orb.
+  frame.addEventListener('error', (e) => (e.target as HTMLElement).matches('.orb img') && (e.target as HTMLElement).remove(), true);
   const canvas = root.querySelector<HTMLCanvasElement>('canvas.ribbon')!;
   const sections = [...root.querySelectorAll<HTMLElement>('.slide')];
   const bars = [...root.querySelectorAll<HTMLElement>('.progress span')];
@@ -131,6 +133,7 @@ export function playStory(root: HTMLElement, s: Summary, shareUrl: string, onExi
     };
     switch (btn.dataset.action) {
       case 'copy':
+        if (!shareUrl) return flash('Site not set up yet');
         await navigator.clipboard.writeText(shareUrl);
         flash('Link copied');
         break;

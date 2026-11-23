@@ -33,7 +33,9 @@ function clean(s: any): Summary {
     if (!Number.isFinite(n)) throw new Error('Bad number in link.');
     return n;
   };
-  const str = (v: unknown) => String(v ?? '').slice(0, 80);
+  const str = (v: unknown, max = 80) => String(v ?? '').slice(0, max);
+  // Only X's own image CDN, so a crafted link cannot point viewers at another host.
+  const avatar = (v: unknown) => (typeof v === 'string' && /^https:\/\/pbs\.twimg\.com\/profile_images\/[\w/.-]+$/.test(v) ? v : null);
   const date = (v: unknown) => {
     const d = str(v);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new Error('Bad date in link.');
@@ -45,14 +47,23 @@ function clean(s: any): Summary {
   return {
     v: 1,
     handle: str(s.handle),
+    avatar: avatar(s.avatar),
     from: date(s.from),
     to: date(s.to),
     likes: num(s.likes),
     bookmarks: num(s.bookmarks),
     both: num(s.both),
     accounts: num(s.accounts),
-    top: (s.top || []).slice(0, 5).map((a: any) => ({ h: str(a.h), n: str(a.n), likes: num(a.likes), saves: num(a.saves) })),
+    top: (s.top || []).slice(0, 5).map((a: any) => ({
+      h: str(a.h),
+      n: str(a.n),
+      a: avatar(a.a),
+      likes: num(a.likes),
+      saves: num(a.saves),
+      replies: num(a.replies ?? 0),
+    })),
     clock,
+    clockOf: s.clockOf === 'you' ? 'you' : 'feed',
     peakHour: num(s.peakHour) % 24,
     topics: (s.topics || []).slice(0, 5).map((t: any) => ({ k: str(t.k), p: num(t.p) })),
     vault: {
@@ -61,12 +72,22 @@ function clean(s: any): Summary {
       gems: num(s.vault?.gems),
       oldest: s.vault?.oldest ? { h: str(s.vault.oldest.h), y: num(s.vault.oldest.y) } : null,
     },
-    months: (s.months || []).slice(0, 13).map((m: any) => ({ m: date(`${str(m.m)}-01`).slice(0, 7), l: num(m.l), b: num(m.b) })),
-    taste: {
-      median: num(s.taste?.median),
-      niche: num(s.taste?.niche),
-      biggest: s.taste?.biggest ? { h: str(s.taste.biggest.h), views: num(s.taste.biggest.views) } : null,
-    },
+    months: (s.months || []).slice(0, 13).map((m: any) => ({ m: date(`${str(m.m)}-01`).slice(0, 7), l: num(m.l), b: num(m.b), p: num(m.p ?? 0) })),
+    taste: s.taste
+      ? {
+          median: num(s.taste.median),
+          niche: num(s.taste.niche),
+          biggest: s.taste.biggest ? { h: str(s.taste.biggest.h), views: num(s.taste.biggest.views) } : null,
+        }
+      : null,
+    posts: s.posts
+      ? {
+          count: num(s.posts.count),
+          replies: num(s.posts.replies),
+          retweets: num(s.posts.retweets),
+          best: s.posts.best ? { text: str(s.posts.best.text, 160), likes: num(s.posts.best.likes), views: num(s.posts.best.views) } : null,
+        }
+      : null,
     media: { video: num(s.media?.video), photo: num(s.media?.photo), text: num(s.media?.text) },
     langs: num(s.langs),
     persona: { id: s.persona.id as PersonaId, traits: [0, 1, 2].map((i) => num(s.persona.traits?.[i])) as [number, number, number] },

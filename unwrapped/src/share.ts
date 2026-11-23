@@ -2,6 +2,7 @@
 import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import { Ribbon, type Pose } from './ribbon';
 import { fmt, yearOf } from './slides';
+import { SITE_HOST } from './site';
 import { PERSONAS, type Summary } from './stats';
 
 const FONT = '"Inter Variable", Inter, system-ui, sans-serif';
@@ -22,7 +23,7 @@ export class CardRenderer {
   private ribbon: Ribbon;
   private ctx: CanvasRenderingContext2D;
 
-  constructor(readonly size: number, private s: Summary, private host = location.host) {
+  constructor(readonly size: number, private s: Summary, private host = SITE_HOST) {
     this.canvas.width = this.canvas.height = this.glCanvas.width = this.glCanvas.height = size;
     this.ribbon = new Ribbon(this.glCanvas, true);
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;

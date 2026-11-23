@@ -50,21 +50,27 @@ The fixtures are trimmed copies of real `Likes` responses.
 
 ## X Unwrapped
 
-`unwrapped/` is a web app that turns the exports into a year-in-review story and a share card.
-Everything runs in the browser; the files are never uploaded.
+`unwrapped/` turns your last 12 months on X into a story with a share link, a PNG card and an animated GIF.
+Everything runs in the browser; nothing is uploaded.
+There are three ways in.
+
+1. The Chrome extension. Press "Make my Unwrapped" and it opens X in a new tab, scrolls your likes, bookmarks and posts back 12 months, then plays the story. It can also download the collected JSON.
+2. Your official X archive (Settings, Your account, Download an archive of your data). Drop the zip on the page. It gives likes and your posts with exact dates, but no bookmarks and no authors for likes.
+3. The JSON files from the userscript above.
 
 ```sh
-cd unwrapped && npm install && npm run dev
+cd unwrapped && npm install
+npm run dev                # website
+npm run build              # website to dist/
+npm run build:extension    # extension to extension-dist/
+npm test
 ```
 
-Drop the likes and bookmarks JSON files on the page.
-The story covers the 12 months before the export date.
+To try the extension, open `chrome://extensions`, turn on Developer mode, press "Load unpacked" and pick `unwrapped/extension-dist`.
+Set `VITE_SITE_URL` to the hosted site when you build the extension, so its share links point there.
+
 X does not record when you liked or saved a post, only the order, so each action is dated by the newest post below it in the list.
-The clock slide shows when the posts you liked went live, not when you were online.
+The extension stops a list once 40 posts in a row are older than 12 months.
+With enough of your own posts, the clock slide shows when you post; otherwise it shows when the posts you liked went live.
 
-The share link puts the summary stats (counts, top accounts, topics, persona) in the URL fragment, which browsers do not send to the server.
-No posts or files go in the link.
-The last slide copies the link and saves a PNG card or an animated GIF.
-
-`npm run build` writes a static site to `unwrapped/dist`, with the userscript copied next to it.
-`npm test` runs the stats and link tests.
+The share link puts the summary stats (counts, top accounts with their profile picture URLs, topics, persona, your top post's text) in the URL fragment, which browsers do not send to the server.
