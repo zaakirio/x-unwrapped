@@ -81,6 +81,7 @@ async function onResult(job, payload) {
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     if (msg.type === 'start') return start(sender.tab.id, msg.platform === 'threads' ? 'threads' : 'x');
+    if (msg.type === 'check') return dropOrphanedJob();
     const job = await getJob();
     // Every other message comes from the tab that the job opened.
     if (!job || job.status !== 'running' || sender.tab?.id !== job.tabId) return null;
@@ -101,11 +102,19 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   return true;
 });
 
+async function abandon(job) {
+  job.status = 'error';
+  job.message = `The ${job.platform === 'threads' ? 'Threads' : 'X'} tab was closed before it finished.`;
+  await setJob(job);
+}
+
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const job = await getJob();
-  if (job?.status === 'running' && tabId === job.tabId) {
-    job.status = 'error';
-    job.message = `The ${job.platform === 'threads' ? 'Threads' : 'X'} tab was closed before it finished.`;
-    await setJob(job);
-  }
+  if (job?.status === 'running' && tabId === job.tabId) await abandon(job);
 });
+
+// A browser that quit mid-run never fires onRemoved, so the app checks for a lost tab each time it opens.
+async function dropOrphanedJob() {
+  const job = await getJob();
+  if (job?.status === 'running' && !(await chrome.tabs.get(job.tabId).catch(() => null))) await abandon(job);
+}

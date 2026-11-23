@@ -14,7 +14,11 @@ const until = (test, every = 300) =>
 // The signed-in user's own profile link in the side bar, as a handle without the leading / or /@.
 function viewerHandle() {
   if (!THREADS) return document.querySelector('a[data-testid="AppTabBar_Profile_Link"]')?.getAttribute('href').slice(1) || null;
-  const link = [...document.querySelectorAll('a[href^="/@"]')].find((a) => a.querySelector('svg[aria-label="Profile"]'));
+  // The side menu links to your profile as a bare /@handle next to /activity; post author links
+  // live elsewhere on the page, so search only inside the menu.
+  let menu = document.querySelector('a[href="/activity"]');
+  while (menu && !menu.querySelector('a[href^="/@"]')) menu = menu.parentElement;
+  const link = menu?.querySelector('a[href^="/@"]');
   return link ? link.getAttribute('href').slice(2).replace(/\/.*$/, '') : null;
 }
 const onLoginPage = () => /^\/(i\/flow\/login|login|i\/flow\/signup)/.test(location.pathname) || (!THREADS && location.pathname === '/');

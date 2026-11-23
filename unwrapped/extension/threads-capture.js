@@ -144,7 +144,11 @@
   else readEmbedded();
 
   function viewerHandle() {
-    const link = [...document.querySelectorAll('a[href^="/@"]')].find((a) => a.querySelector('svg[aria-label="Profile"]'));
+    // The side menu links to your profile as a bare /@handle next to /activity; post author links
+    // live elsewhere on the page, so search only inside the menu.
+    let menu = document.querySelector('a[href="/activity"]');
+    while (menu && !menu.querySelector('a[href^="/@"]')) menu = menu.parentElement;
+    const link = menu?.querySelector('a[href^="/@"]');
     return link ? link.getAttribute('href').slice(2).replace(/\/.*$/, '') : null;
   }
 

@@ -123,6 +123,7 @@ async function extensionControls() {
     return files;
   };
 
+  await ext!.runtime.sendMessage({ type: 'check' });
   let { job } = (await ext!.storage.local.get('job')) as { job?: Job };
   await show(job);
   ext!.storage.onChanged.addListener(async (changes) => {

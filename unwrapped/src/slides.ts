@@ -67,6 +67,9 @@ export function avatar(handle: string, url: string | null, cls = '') {
   return `<div class="orb ${cls}" style="${orb(handle)}">${img}</div>`;
 }
 
+// Shrinks long handles to one line across the frame (the large title is 12.6cqw).
+const fitHandle = (h: string) => Math.min(12.6, 86 / (0.58 * (h.length + 1))).toFixed(2);
+
 const plural = (n: number, one: string, many = `${one}s`) => `${count(n)} ${n === 1 ? one : many}`;
 
 // Entrance animation hook; an attribute, not a class, so it can sit next to an element's own class.
@@ -188,7 +191,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
         <div class="mixbar"><i style="--w:${s.media.video}%"></i><i style="--w:${s.media.photo}%"></i><i style="--w:${s.media.text}%"></i></div>
         <div class="mixlegend"><span>Video ${s.media.video}%</span><span>Photo ${s.media.photo}%</span><span>Text ${s.media.text}%</span></div>
       </div>
-      <p class="facts" ${anim(3)}>${t.niche}% had under 1K likes. ${t.biggest ? `Biggest: a @${esc(t.biggest.h)} post with ${compact(t.biggest.views)} views.` : ''} Posts in ${fmt(s.langs)} languages.</p>`,
+      <p class="facts" ${anim(3)}>${t.niche}% had under 1K likes. ${t.biggest ? `Biggest: a @${esc(t.biggest.h)} post with ${compact(t.biggest.views)} views.` : ''} Posts in ${plural(s.langs, 'language')}.</p>`,
   };
 
   const wave: Slide = {
@@ -223,7 +226,7 @@ export function buildSlides(s: Summary, shareCard: string): Slide[] {
     pose: [0.2, 0.0, 0.8, 1.2],
     hold: true,
     html: `
-      <h2 class="display l" ${anim(0)}>That's a wrap,<br><span class="grad">@${esc(s.handle)}</span></h2>
+      <h2 class="display l" ${anim(0)}>That's a wrap,<br><span class="grad" style="font-size:${fitHandle(s.handle)}cqw">@${esc(s.handle)}</span></h2>
       <div class="share-preview" ${anim(1)}>${shareCard}</div>
       <div class="actions" ${anim(2)}>
         <button data-action="copy" class="primary">Copy share link</button>
