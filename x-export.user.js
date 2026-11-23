@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         X Likes & Bookmarks Exporter
+// @name         X Likes, Bookmarks & Posts Exporter
 // @namespace    https://github.com/zaakirio/x-unwrapped
-// @version      1.0.0
-// @description  Export your X (Twitter) likes and bookmarks to JSON and CSV by capturing the timeline data the page already loads.
+// @version      1.1.0
+// @description  Export your X (Twitter) likes, bookmarks and posts to JSON and CSV by capturing the timeline data the page already loads.
 // @match        https://x.com/*
 // @match        https://twitter.com/*
 // @run-at       document-start
@@ -15,12 +15,12 @@
 
   // ---------- Parsing (pure, also loaded by the Node tests) ----------
 
-  const TIMELINE_OP = /\/graphql\/[^/]+\/(Likes|Bookmarks)(?:\?|$)/;
+  const TIMELINE_OP = /\/graphql\/[^/]+\/(Likes|Bookmarks|UserTweetsAndReplies|UserTweets)(?:\?|$)/;
+  const OP_KIND = { Likes: 'likes', Bookmarks: 'bookmarks', UserTweets: 'posts', UserTweetsAndReplies: 'posts' };
 
   function opKind(url) {
     const m = TIMELINE_OP.exec(url);
-    if (!m) return null;
-    return m[1] === 'Likes' ? 'likes' : 'bookmarks';
+    return m ? OP_KIND[m[1]] : null;
   }
 
   function requestVariables(url) {
@@ -100,6 +100,8 @@
     const quoted = depth === 0 && t.quoted_status_result?.result
       ? normalizeTweet(t.quoted_status_result.result, depth + 1)
       : null;
+    const retweeted = unwrapTweet(legacy.retweeted_status_result?.result);
+    const retweetUser = retweeted?.core?.user_results?.result;
 
     return {
       id,
@@ -109,6 +111,7 @@
         id: user.rest_id || legacy.user_id_str || null,
         screen_name: screenName,
         name: user.core?.name ?? user.legacy?.name ?? null,
+        avatar: user.avatar?.image_url ?? user.legacy?.profile_image_url_https ?? null,
       },
       text,
       lang: legacy.lang || null,
@@ -127,6 +130,9 @@
       media: media.map(mediaItem),
       urls,
       quoted,
+      retweet_of: retweeted
+        ? { id: retweeted.rest_id || null, screen_name: retweetUser?.core?.screen_name ?? retweetUser?.legacy?.screen_name ?? null }
+        : null,
     };
   }
 
@@ -190,13 +196,16 @@
 
   // ---------- Capture ----------
 
-  const LABEL = { likes: 'Likes', bookmarks: 'Bookmarks' };
+  const LABEL = { likes: 'Likes', bookmarks: 'Bookmarks', posts: 'Posts' };
+  // Set by the X Unwrapped extension, which drives the runner and shows its own overlay.
+  const AUTOMATED = window.__xUnwrapped === true;
   const IDLE_STOP_MS = 45000;
   const DEFAULT_RATE_LIMIT_MS = 15 * 60 * 1000;
 
   const store = {
     likes: newBucket(),
     bookmarks: newBucket(),
+    posts: newBucket(),
   };
 
   function newBucket() {
@@ -230,7 +239,12 @@
       return;
     }
     const vars = requestVariables(url);
-    if (kind === 'likes' && vars.userId) bucket.ownerId = vars.userId;
+    // Profile timelines load for every profile you visit; keep only the latest profile's posts.
+    if (kind === 'posts' && vars.userId && bucket.ownerId && vars.userId !== bucket.ownerId) {
+      store.posts = newBucket();
+      return ingest(url, status, bodyText, rateLimitReset);
+    }
+    if (kind !== 'bookmarks' && vars.userId) bucket.ownerId = vars.userId;
     const { tweets, bottomCursor } = parseTimeline(json);
     bucket.pages += 1;
     let added = 0;
@@ -290,11 +304,14 @@
     const path = location.pathname.replace(/\/$/, '');
     if (path === '/i/history' || path === '/i/bookmarks') return 'bookmarks';
     if (path === '/i/history/likes' || /^\/[^/]+\/likes$/.test(path)) return 'likes';
+    const me = viewerScreenName();
+    if (me && path.toLowerCase() === `/${me.toLowerCase()}/with_replies`) return 'posts';
     return null;
   }
 
   // Prefer X's own tab link so the app navigates in place and captured data survives.
   function goTo(kind) {
+    if (kind === 'posts') return location.assign(`/${viewerScreenName()}/with_replies`);
     const link = document.querySelector(`a[href="${PAGE[kind]}"][role="tab"]`);
     if (link) link.click();
     else location.assign(PAGE[kind]);
@@ -322,9 +339,9 @@
     return `x-${kind}-${who}-${day}`;
   }
 
-  function exportJson(kind) {
+  function exportPayload(kind) {
     const b = store[kind];
-    const payload = {
+    return {
       kind,
       exported_at: new Date().toISOString(),
       account: viewerScreenName(),
@@ -332,7 +349,31 @@
       count: b.tweets.size,
       tweets: [...b.tweets.values()],
     };
-    download(`${fileBase(kind)}.json`, JSON.stringify(payload, null, 2), 'application/json');
+  }
+
+  function exportJson(kind) {
+    download(`${fileBase(kind)}.json`, JSON.stringify(exportPayload(kind), null, 2), 'application/json');
+  }
+
+  function post(message) {
+    window.postMessage({ source: 'xunwrapped-page', ...message }, location.origin);
+  }
+
+  // Lists are newest-action first, so a long run of old posts means the cutoff has passed.
+  // Likes and bookmarks can hold old posts saved recently, hence the longer run for them.
+  function pastCutoff(kind, cutoff) {
+    const b = store[kind];
+    const need = kind === 'posts' ? 5 : 40;
+    let run = 0;
+    const tweets = [...b.tweets.values()];
+    for (let i = tweets.length - 1; i >= 0 && run < need; i--) {
+      const t = tweets[i];
+      if (t.unavailable || !t.created_at) continue;
+      if (kind === 'posts' && t.author?.id !== b.ownerId) continue;
+      if (Date.parse(t.created_at) >= cutoff) return false;
+      run++;
+    }
+    return run >= need;
   }
 
   function exportCsv(kind) {
@@ -348,10 +389,13 @@
     message: '',
     autoDownload: true,
 
-    start() {
+    cutoff: 0,
+
+    start(cutoff = 0) {
       const kind = currentKind();
       if (!kind) return;
       this.kind = kind;
+      this.cutoff = cutoff;
       this.startedAt = Date.now();
       this.message = '';
       store[kind].lastNewAt = Date.now();
@@ -363,12 +407,17 @@
       clearInterval(this.timer);
       this.timer = null;
       this.message = message || 'Stopped.';
+      if (AUTOMATED) post({ type: 'stopped', kind: this.kind, message: this.message });
       ui.render();
     },
 
     finish(message) {
       const kind = this.kind;
-      this.stop(message);
+      clearInterval(this.timer);
+      this.timer = null;
+      this.message = message;
+      if (AUTOMATED) return post({ type: 'done', kind, payload: exportPayload(kind) });
+      ui.render();
       if (this.autoDownload && store[kind].tweets.size) exportJson(kind);
     },
 
@@ -377,6 +426,7 @@
       const b = store[kind];
       if (currentKind() !== kind) return this.stop(`Stopped: left the ${LABEL[kind]} page.`);
       if (b.ended) return this.finish(`Done: reached the end of ${LABEL[kind]}.`);
+      if (this.cutoff && pastCutoff(kind, this.cutoff)) return this.finish(`Done: reached ${LABEL[kind]} older than the cutoff.`);
       const now = Date.now();
       if (rateLimitedUntil > now) {
         b.lastNewAt = now;
@@ -394,9 +444,17 @@
       const bottom = document.documentElement.scrollHeight;
       if (window.scrollY + window.innerHeight >= bottom - 4) window.scrollBy(0, -400);
       window.scrollTo(0, bottom);
+      if (AUTOMATED) post({ type: 'progress', kind, count: b.tweets.size, rateLimitedUntil });
       ui.render();
     },
   };
+
+  if (AUTOMATED) {
+    window.addEventListener('message', (e) => {
+      if (e.source !== window || e.data?.source !== 'xunwrapped-bridge') return;
+      if (e.data.type === 'run' && !runner.timer) runner.start(e.data.cutoff);
+    });
+  }
 
   function clickRetry() {
     const col = document.querySelector('[data-testid="primaryColumn"]');
@@ -452,6 +510,7 @@
       else if (action === 'autodl') runner.autoDownload = e.target.checked;
       else if (action === 'go-likes') goTo('likes');
       else if (action === 'go-bookmarks') goTo('bookmarks');
+      else if (action === 'go-posts') goTo('posts');
       this.render();
     },
 
@@ -467,7 +526,7 @@
           ? `Rate limited by X. Resuming at ${new Date(rateLimitedUntil).toLocaleTimeString()}.`
           : `Scrolling ${LABEL[runner.kind]}... ${store[runner.kind].tweets.size} posts so far.`;
       } else if (!kind) {
-        status = 'Open your Likes or Bookmarks to export.';
+        status = 'Open your Likes, Bookmarks or Posts to export.';
       } else if (!status) {
         status = b.ended ? 'Reached the end. Ready to download.' : 'Press Start to load everything.';
       }
@@ -487,8 +546,9 @@
             <label class="check"><input type="checkbox" data-action="autodl" ${runner.autoDownload ? 'checked' : ''}> Download JSON when done</label>
           ` : `
             <div class="row">
-              <button data-action="go-likes">Go to Likes</button>
-              <button data-action="go-bookmarks">Go to Bookmarks</button>
+              <button data-action="go-likes">Likes</button>
+              <button data-action="go-bookmarks">Bookmarks</button>
+              <button data-action="go-posts">Posts</button>
             </div>
           `}
         </div>`;
@@ -526,6 +586,7 @@
     .check { display: flex; gap: 6px; align-items: center; color: #8b98a5; cursor: pointer; }
   `;
 
+  if (AUTOMATED) return;
   if (document.body) ui.mount();
   else document.addEventListener('DOMContentLoaded', () => ui.mount(), { once: true });
 })();

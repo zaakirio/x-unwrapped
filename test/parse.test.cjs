@@ -2,11 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const page = require('./fixtures/likes-page.json');
 const end = require('./fixtures/likes-end.json');
-const { opKind, requestVariables, parseTimeline, toCsv } = require('../x-export.user.js');
+const { opKind, requestVariables, parseTimeline, normalizeTweet, toCsv } = require('../x-export.user.js');
 
-test('opKind matches only the Likes and Bookmarks timelines', () => {
+test('opKind matches only the Likes, Bookmarks and profile post timelines', () => {
   assert.equal(opKind('https://x.com/i/api/graphql/abc/Likes?variables=%7B%7D'), 'likes');
   assert.equal(opKind('https://x.com/i/api/graphql/abc/Bookmarks?variables=%7B%7D'), 'bookmarks');
+  assert.equal(opKind('https://x.com/i/api/graphql/abc/UserTweets?variables=%7B%7D'), 'posts');
+  assert.equal(opKind('https://x.com/i/api/graphql/abc/UserTweetsAndReplies?variables=%7B%7D'), 'posts');
+  assert.equal(opKind('https://x.com/i/api/graphql/abc/UserMedia?variables=%7B%7D'), null);
   assert.equal(opKind('https://x.com/i/api/graphql/abc/BookmarkFoldersSlice?variables=%7B%7D'), null);
   assert.equal(opKind('https://x.com/i/api/graphql/abc/UserByScreenName'), null);
 });
@@ -65,4 +68,21 @@ test('CSV quotes multi-line text and has one header plus one row per post', () =
   const t = parseTimeline(page).tweets[2].tweet;
   assert.ok(csv.includes(`"${t.text.replace(/"/g, '""')}"`));
   assert.match(csv, /This Post was deleted\.\r\n$/);
+});
+
+test('author keeps the profile picture url', () => {
+  const [first] = parseTimeline(page).tweets.map((t) => t.tweet);
+  assert.match(first.author.avatar, /^https:\/\/pbs\.twimg\.com\/profile_images\/.+_normal\.jpg$/);
+});
+
+test('a retweet records the original post and author', () => {
+  const entry = page.data.user.result.timeline.timeline.instructions
+    .find((i) => i.type === 'TimelineAddEntries').entries[0].content.itemContent.tweet_results.result;
+  const original = structuredClone(entry);
+  const rt = structuredClone(entry);
+  rt.rest_id = '42';
+  rt.legacy = { ...rt.legacy, id_str: '42', full_text: 'RT @someone: hi', retweeted_status_result: { result: original } };
+  const t = normalizeTweet(rt);
+  assert.deepEqual(t.retweet_of, { id: original.rest_id, screen_name: original.core.user_results.result.core.screen_name });
+  assert.equal(normalizeTweet(original).retweet_of, null);
 });
