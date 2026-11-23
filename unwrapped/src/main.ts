@@ -16,9 +16,7 @@ const EXPORTER = 'x-export.user.js';
 const ext = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome : null;
 const KINDS: Kind[] = ['likes', 'bookmarks', 'posts'];
 
-function shareUrl(token: string) {
-  return SITE_URL ? `${SITE_URL}#u=${token}` : null;
-}
+const shareUrl = (token: string) => `${SITE_URL}#u=${token}`;
 
 let stopBackdrop = () => {};
 

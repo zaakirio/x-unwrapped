@@ -40,7 +40,7 @@ export interface Strings {
   taste: { title: string; typical: string; underground: string; mainstream: string; video: string; photo: string; text: string; niche(p: number): string; biggest(handle: string, views: string): string; langs(n: number): string };
   wave: { title: string; likes: string; saves(platform: string): string; posts: string; foot(platform: string): string; peak(month: string, year: string): string };
   personaKicker(platform: string): string;
-  outro: { title: string; copy: string; gif: string; png: string; replay: string; copied: string; noSite: string; rendering(p: number): string };
+  outro: { title: string; copy: string; gif: string; png: string; replay: string; copied: string; rendering(p: number): string };
   card: { title(platform: string): string; footer(host: string, saves: string): string };
 }
 
@@ -146,7 +146,6 @@ const en: Strings = {
     png: 'Save card',
     replay: 'Replay',
     copied: 'Link copied',
-    noSite: 'Site not set up yet',
     rendering: (p) => `Rendering ${p}%`,
   },
   card: { title: (p) => `${p} Unwrapped`, footer: (host, saves) => `${host} · 12 months of likes and ${saves}` },
@@ -242,7 +241,6 @@ const ru: Strings = {
     png: 'Карточка',
     replay: 'Ещё раз',
     copied: 'Ссылка скопирована',
-    noSite: 'Сайт ещё не настроен',
     rendering: (p) => `Рендер ${p}%`,
   },
   card: { title: (p) => `Итоги ${p}`, footer: (host, saves) => `${host} · 12 месяцев лайков и ${saves === 'bookmarks' ? 'закладок' : 'сохранений'}` },

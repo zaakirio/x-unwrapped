@@ -24,7 +24,7 @@ export class CardRenderer {
   private ribbon: Ribbon;
   private ctx: CanvasRenderingContext2D;
 
-  constructor(readonly size: number, private s: Summary, private host = SITE_HOST ?? STRINGS[s.l].card.title(PLATFORMS[s.p].name)) {
+  constructor(readonly size: number, private s: Summary, private host = SITE_HOST) {
     this.canvas.width = this.canvas.height = this.glCanvas.width = this.glCanvas.height = size;
     this.ribbon = new Ribbon(this.glCanvas, true);
     this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;

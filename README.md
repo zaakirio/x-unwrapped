@@ -20,6 +20,19 @@ The link holds only summary numbers, never your posts or your login.
 You can also drop your official X data archive (Settings, Your account, Download an archive of your data) on the website instead of using the extension.
 The archive has no bookmarks, so the story is shorter.
 
+## Run it from source
+
+You need [Node.js](https://nodejs.org) 20.19 or newer.
+
+```sh
+git clone https://github.com/zaakirio/x-unwrapped.git
+cd x-unwrapped
+npm run setup
+```
+
+Then load `unwrapped/extension-dist` with "Load unpacked" as in step 2 above.
+`npm run dev` serves the website locally, and `npm test` runs all tests.
+
 ## Userscript exporter
 
 The repo also holds the userscript the extension grew out of.
@@ -90,7 +103,7 @@ npm test
 ```
 
 To try the extension, open `chrome://extensions`, turn on Developer mode, press "Load unpacked" and pick `unwrapped/extension-dist`.
-Set `VITE_SITE_URL` to the hosted site when you build the extension, so its share links point there.
+The extension's share links point at the hosted website; set `VITE_SITE_URL` when you build to use your own copy.
 
 X does not record when you liked or saved a post, only the order, so each action is dated by the newest post below it in the list.
 The extension stops a list once 40 posts in a row are older than 12 months.

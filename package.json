@@ -1,16 +1,15 @@
 {
-  "name": "x-export",
-  "version": "1.0.0",
-  "description": "Userscript to export X likes and bookmarks",
-  "scripts": {
-    "test": "node --test test/parse.test.cjs"
-  },
-  "author": "",
+  "name": "x-unwrapped",
+  "version": "1.1.0",
+  "description": "Your last 12 months on X or Threads, unwrapped. A Chrome extension and website that build a Wrapped-style story in your own browser.",
+  "author": "zaakirio",
   "license": "ISC",
+  "private": true,
   "type": "commonjs",
-  "devDependencies": {
-    "playwright": "^1.65.0",
-    "puppeteer-core": "^25.18.1"
-  },
-  "private": true
+  "repository": "github:zaakirio/x-unwrapped",
+  "scripts": {
+    "setup": "npm --prefix unwrapped ci && npm --prefix unwrapped run build:extension && node -e \"console.log('\\nDone. Load unwrapped/extension-dist in chrome://extensions (Developer mode, Load unpacked).')\"",
+    "dev": "npm --prefix unwrapped run dev",
+    "test": "node --test test/parse.test.cjs && npm --prefix unwrapped test"
+  }
 }

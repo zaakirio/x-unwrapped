@@ -1,5 +1,6 @@
 {
-  "name": "x-unwrapped",
+  "name": "x-unwrapped-app",
+  "author": "zaakirio",
   "private": true,
   "type": "module",
   "scripts": {

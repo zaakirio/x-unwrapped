@@ -6,7 +6,7 @@ import type { Summary } from './stats';
 
 const SLIDE_MS = 7000;
 
-export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null, onExit: () => void) {
+export function playStory(root: HTMLElement, s: Summary, shareUrl: string, onExit: () => void) {
   const T = STRINGS[s.l];
   const slides = buildSlides(s, '<canvas class="card-canvas" width="540" height="540"></canvas>');
   root.innerHTML = `
@@ -135,7 +135,6 @@ export function playStory(root: HTMLElement, s: Summary, shareUrl: string | null
     };
     switch (btn.dataset.action) {
       case 'copy':
-        if (!shareUrl) return flash(T.outro.noSite);
         await navigator.clipboard.writeText(shareUrl);
         flash(T.outro.copied);
         break;
